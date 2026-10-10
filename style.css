@@ -361,3 +361,19 @@ button{
 @media(prefers-reduced-motion:reduce){
   .chip-token{animation:none}
 }
+
+/* Authentication gate */
+.auth-gate{position:fixed;inset:0;z-index:120;background:radial-gradient(ellipse at top,#1a3850,#080d17 72%);display:flex;align-items:center;justify-content:center;padding:18px}
+.auth-gate.auth-hidden{display:none}
+.auth-card{width:min(430px,100%);padding:30px;border:1px solid rgba(240,199,94,.22);border-radius:22px;background:linear-gradient(160deg,#17243a,#101827);box-shadow:0 25px 70px rgba(0,0,0,.55);display:flex;flex-direction:column;gap:10px}
+.auth-brand{font-size:40px;text-align:center}
+.auth-card h2{text-align:center;font-size:23px}
+.auth-card>p:not(.auth-status){color:#aab8cb;text-align:center;font-size:13px;line-height:1.8;margin-bottom:10px}
+.auth-card label{font-size:13px;color:#d5dfec;margin-top:4px}
+.auth-input{width:100%;border:1px solid #34445c;border-radius:11px;background:#0d1522;color:#fff;padding:13px;font:inherit;outline:none}
+.auth-input:focus{border-color:#f0c75e;box-shadow:0 0 0 3px rgba(240,199,94,.12)}
+.auth-submit{margin-top:8px;background:linear-gradient(135deg,#f0c75e,#dfad36);color:#171717}
+.auth-switch{background:transparent;color:#e2c66c}
+.auth-status{min-height:24px;font-size:13px;color:#b5e8cb;text-align:center;line-height:1.7}
+.signout-btn{background:#2e3d56;color:#fff;padding:10px 12px}
+@media(max-width:600px){.topbar{padding:10px}.topbar h1{font-size:18px}.balance{font-size:11px;padding:8px}.signout-btn{padding:8px}}
