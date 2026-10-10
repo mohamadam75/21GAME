@@ -145,6 +145,7 @@ function renderAskechi(current) {
   $("standBtn").style.display = "none";
   $("closeBankBtn").style.display = "none";
   $("nextRoundBtn").style.display = "none";
+  $("nextPlayerBtn").style.display = "none";
   $("seats").innerHTML = players.map((p, i) => `
     <div class="seat s${i} ${i === current ? "active" : ""}">
       <div class="avatar">👤</div>
