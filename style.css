@@ -377,3 +377,14 @@ button{
 .auth-status{min-height:24px;font-size:13px;color:#b5e8cb;text-align:center;line-height:1.7}
 .signout-btn{background:#2e3d56;color:#fff;padding:10px 12px}
 @media(max-width:600px){.topbar{padding:10px}.topbar h1{font-size:18px}.balance{font-size:11px;padding:8px}.signout-btn{padding:8px}}
+
+/* Larger, high-contrast card faces for readability */
+.playing-card{width:56px;height:80px;border:2px solid #e3e6ec;background:linear-gradient(145deg,#fff 0%,#f7f8fb 58%,#e7ebf1 100%);box-shadow:0 5px 12px rgba(0,0,0,.45),inset 0 0 0 1px rgba(20,30,45,.06)}
+.playing-card .rank{font-size:21px;line-height:1}
+.playing-card .suit{font-size:26px;line-height:1.1}
+.seat .cards .playing-card{width:46px;height:64px;border-width:1px}
+.seat .cards .playing-card .rank{font-size:16px}
+.seat .cards .playing-card .suit{font-size:20px}
+.hand-info .playing-card{width:52px;height:74px}
+.social-tools #soundToggle{background:#33445e;color:#f5d77b}
+.social-tools #soundToggle.muted{color:#b2bfd0;opacity:.7}
