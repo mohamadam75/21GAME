@@ -166,7 +166,7 @@ returns public.wallet_requests
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 declare
   req public.wallet_requests;
   current_chips bigint;
@@ -210,7 +210,7 @@ begin
 
   return req;
 end;
-$;
+$$;
 
 revoke all on function public.admin_review_wallet_request(uuid,boolean,text) from public;
 grant execute on function public.admin_review_wallet_request(uuid,boolean,text) to authenticated;
