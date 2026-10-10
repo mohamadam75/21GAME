@@ -243,7 +243,7 @@ function render() {
     ? Array.from({ length: chipCount }, (_, i) => `<span class="chip-token chip-${i % 4}" style="--chip-index:${i}" aria-hidden="true"></span>`).join("")
     : '<span class="empty-bank">—</span>';
   $("status").textContent = battleMessage || (roundEnded ? "دور بانکداری تمام شد" : (battleSettled ? "نتیجه ثبت شد" : (bankerTurn ? "نوبت بانکدار" : `نوبت ${players[activePlayer].name}`)));
-  $("standBtn").style.display = bankerTurn || battleSettled || roundEnded ? "none" : "block";
+  $("standBtn").style.display = "none";
   $("closeBankBtn").style.display = bankerTurn && !battleSettled && !roundEnded ? "block" : "none";
   $("nextPlayerBtn").style.display = battleSettled && !roundEnded ? "block" : "none";
 
@@ -254,7 +254,7 @@ function render() {
       <div class="tag">${i === banker ? "بانکدار" : ""}</div>
       <div class="cards">${
         battleSettled
-          ? hiddenCards(p.hand.length || (i === banker ? bankerHand.length : 1))
+          ? (i === banker ? cardsText(bankerHand) : i === activePlayer ? cardsText(playerHand) : hiddenCards(p.hand.length))
           : i === banker
             ? (bankerTurn ? cardsText(bankerHand) : hiddenCards(bankerHand.length))
             : i === activePlayer
@@ -265,7 +265,7 @@ function render() {
     </div>`).join("");
 
   $("handInfo").innerHTML = battleSettled
-    ? `<span class="privacy-note">کارت‌های هر دو طرف پس از پایان دست مخفی شدند.</span>`
+    ? `دست بانکدار: <strong>${cardsText(bankerHand)}</strong> — ${score(bankerHand)}<br>دست بازیکن: <strong>${cardsText(playerHand)}</strong> — ${score(playerHand)}`
     : bankerTurn
       ? `دست بانکدار: <strong>${cardsText(bankerHand)}</strong> — ${score(bankerHand)} <span class="privacy-note">دست بازیکن مخفی است</span>`
       : `دست بازیکن: <strong>${cardsText(playerHand)}</strong> — ${score(playerHand)} <span class="privacy-note">دست بانکدار مخفی است</span>`;
@@ -276,6 +276,7 @@ function render() {
 function renderChoices() {
   const box = $("cardChoices");
   box.innerHTML = "";
+  if (battleSettled || roundEnded) return;
   if (bankerTurn) {
     const takeCard = document.createElement("button");
     takeCard.textContent = "کارت بانکدار";
@@ -291,6 +292,11 @@ function renderChoices() {
   takeCard.textContent = "کارت بده";
   takeCard.onclick = () => requestCards(1);
   box.appendChild(takeCard);
+  const standButton = document.createElement("button");
+  standButton.textContent = "بستم";
+  standButton.className = "secondary";
+  standButton.onclick = stand;
+  box.appendChild(standButton);
 }
 
 function requestCards(n) {
@@ -375,8 +381,6 @@ function finishBattle(reason = "normal") {
     if (bank < base) {
       battleMessage = "موجودی بانک برای پرداخت این دست کافی نیست";
       roundEnded = true;
-      players[activePlayer].hand = [];
-      playerHand = [];
       $("cardChoices").innerHTML = "";
       $("nextRoundBtn").style.display = "none";
       render();
@@ -390,10 +394,8 @@ function finishBattle(reason = "normal") {
     battleMessage = `بانکدار برنده شد • ${money(base)} تومان به بانک اضافه شد`;
   }
 
-  players[activePlayer].hand = [];
-  playerHand = [];
+  players[activePlayer].hand = [...playerHand];
   playersHandledThisBankRound++;
-  if (bankerDrewThisHand) bankerHand = [];
 
   if (bank <= 0 || bank >= base * 9) {
     endBankRound();
@@ -413,6 +415,7 @@ function nextPlayer() {
     return;
   }
   battleMessage = "";
+  if (bankerDrewThisHand) bankerHand = [];
   let next = (activePlayer + 1) % players.length;
   if (next === banker) next = (next + 1) % players.length;
   activePlayer = next;
