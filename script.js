@@ -157,6 +157,7 @@ function dealAskechi(index) {
     renderAskechi(index);
     if (c === "A") {
       banker = index;
+      players[banker].balance -= tables[currentTable] * 3;
       dealTimer = setTimeout(() => {
         askechi = false;
         activePlayer = (banker + 1) % players.length;
