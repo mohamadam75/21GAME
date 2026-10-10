@@ -1,123 +1,16 @@
-/* 21Game authentication UI. The public anon key is safe only with the database RLS policies enabled. */
-(function () {
-  const byId = id => document.getElementById(id);
-  let isSignup = false;
-  let client = null;
-  let profile = null;
-
-  function status(message, error) {
-    const el = byId("authStatus");
-    if (!el) return;
-    el.textContent = message || "";
-    el.style.color = error ? "#ff9a9a" : "#b5e8cb";
-  }
-
-  function setMode(signup) {
-    isSignup = signup;
-    byId("authHeading").textContent = signup ? "ساخت حساب کاربری" : "ورود به بازی ۲۱";
-    byId("authIntro").textContent = signup
-      ? "حساب بسازید تا بتوانید وارد لابی بازی شوید."
-      : "برای انتخاب میز و بازی با دیگران وارد حساب خود شوید.";
-    byId("usernameLabel").classList.toggle("hidden", !signup);
-    byId("authUsername").classList.toggle("hidden", !signup);
-    byId("authUsername").required = signup;
-    byId("authPassword").autocomplete = signup ? "new-password" : "current-password";
-    byId("authSubmit").textContent = signup ? "ثبت‌نام" : "ورود";
-    byId("authModeToggle").textContent = signup ? "قبلاً حساب دارید؟ وارد شوید" : "حساب ندارید؟ ثبت‌نام کنید";
-    status("");
-  }
-
-  function setWallet(value) {
-    const n = Number(value || 0);
-    const el = byId("wallet");
-    if (el) el.textContent = n.toLocaleString("fa-IR");
-    if (typeof window.setAuthenticatedWallet === "function") window.setAuthenticatedWallet(n);
-  }
-
-  async function loadProfile(user) {
-    const { data, error } = await client.from("profiles")
-      .select("id,username,display_name,role,demo_chips")
-      .eq("id", user.id).single();
-    if (error) throw error;
-    profile = data;
-    window.current21GameUser = { id:user.id, email:user.email, ...data };
-    byId("signedInName").textContent = data.display_name || data.username;
-    byId("signOutBtn").classList.remove("hidden");
-    byId("authGate").classList.add("auth-hidden");
-    setWallet(data.demo_chips);
-    window.dispatchEvent(new CustomEvent("21game:authenticated", { detail: window.current21GameUser }));
-  }
-
-  async function handleAuth(event) {
-    event.preventDefault();
-    if (!client) return status("ابتدا تنظیمات Supabase را در supabase-config.js وارد کنید.", true);
-    const email = byId("authEmail").value.trim();
-    const password = byId("authPassword").value;
-    byId("authSubmit").disabled = true;
-    status(isSignup ? "در حال ساخت حساب..." : "در حال ورود...");
-    try {
-      if (isSignup) {
-        const username = byId("authUsername").value.trim().toLowerCase();
-        if (!/^[a-z0-9_]{3,24}$/.test(username)) throw new Error("نام کاربری باید ۳ تا ۲۴ حرف انگلیسی، عدد یا زیرخط باشد.");
-        const { data, error } = await client.auth.signUp({
-          email, password,
-          options: { data: { username, display_name: username } }
-        });
-        if (error) throw error;
-        if (!data.session) {
-          status("حساب ساخته شد. ایمیل تأیید را بررسی کنید؛ سپس وارد شوید.");
-          return;
-        }
-        await loadProfile(data.user);
-      } else {
-        const { data, error } = await client.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        await loadProfile(data.user);
-      }
-    } catch (e) {
-      status(e.message || "ورود انجام نشد.", true);
-    } finally {
-      byId("authSubmit").disabled = false;
-    }
-  }
-
-  async function init() {
-    const url = window.SUPABASE_URL;
-    const key = window.SUPABASE_ANON_KEY;
-    if (!window.supabase || !url || !key || url.includes("YOUR_SUPABASE") || key.includes("YOUR_SUPABASE")) {
-      status("تنظیم Supabase هنوز انجام نشده است. فایل SUPABASE_SETUP.md را دنبال کنید.", true);
-      return;
-    }
-    client = window.supabase.createClient(url, key);
-    window.supabase21Game = client;
-    byId("authForm").addEventListener("submit", handleAuth);
-    byId("authModeToggle").addEventListener("click", () => setMode(!isSignup));
-    byId("signOutBtn").addEventListener("click", async () => {
-      await client.auth.signOut();
-      profile = null;
-      window.current21GameUser = null;
-      byId("signedInName").textContent = "مهمان";
-      byId("signOutBtn").classList.add("hidden");
-      setWallet(0);
-      byId("authGate").classList.remove("auth-hidden");
-      setMode(false);
-    });
-    client.auth.onAuthStateChange(async (_event, session) => {
-      if (!session) return;
-      try { await loadProfile(session.user); }
-      catch (e) { status("ورود انجام شد اما پروفایل آماده نیست: " + e.message, true); }
-    });
-    const { data, error } = await client.auth.getSession();
-    if (error) return status(error.message, true);
-    if (data.session) {
-      try { await loadProfile(data.session.user); }
-      catch (e) { status("پروفایل پیدا نشد. ابتدا schema.sql را در Supabase اجرا کنید.", true); }
-    }
-  }
-
-  window.addEventListener("DOMContentLoaded", () => {
-    byId("authForm").addEventListener("submit", handleAuth);
-    byId("authModeToggle").addEventListener("click", () => setMode(!isSignup));
-    init();
-  });
+/* 21Game Supabase auth + demo-chip request UI. No real-money payment is processed here. */
+(function(){
+  const $=id=>document.getElementById(id); let isSignup=false,client=null,profile=null;
+  function status(msg,err){const el=$("authStatus");if(el){el.textContent=msg||"";el.style.color=err?"#ff9a9a":"#b5e8cb";}}
+  function esc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");}
+  function setMode(signup){isSignup=signup;$("authHeading").textContent=signup?"ساخت حساب کاربری":"ورود به بازی ۲۱";$("authIntro").textContent=signup?"حساب بسازید تا وارد لابی بازی شوید.":"برای انتخاب میز وارد حساب خود شوید.";$("usernameLabel").classList.toggle("hidden",!signup);$("authUsername").classList.toggle("hidden",!signup);$("authUsername").required=signup;$("authPassword").autocomplete=signup?"new-password":"current-password";$("authSubmit").textContent=signup?"ثبت‌نام":"ورود";$("authModeToggle").textContent=signup?"قبلاً حساب دارید؟ وارد شوید":"حساب ندارید؟ ثبت‌نام کنید";status("");}
+  function setWallet(n){n=Number(n||0);$("wallet").textContent=n.toLocaleString("fa-IR");if(typeof window.setAuthenticatedWallet==="function")window.setAuthenticatedWallet(n);}
+  async function loadProfile(user){const r=await client.from("profiles").select("id,username,display_name,role,demo_chips").eq("id",user.id).single();if(r.error)throw r.error;profile=r.data;window.current21GameUser={id:user.id,email:user.email,...profile};$("signedInName").textContent=profile.display_name||profile.username;$("signOutBtn").classList.remove("hidden");$("authGate").classList.add("auth-hidden");$("adminPanelBtn").classList.toggle("hidden",profile.role!=="admin");setWallet(profile.demo_chips);window.dispatchEvent(new CustomEvent("21game:authenticated",{detail:window.current21GameUser}));}
+  async function refreshProfile(){if(window.current21GameUser)await loadProfile({id:window.current21GameUser.id,email:window.current21GameUser.email});}
+  async function submitAuth(e){e.preventDefault();if(!client)return status("تنظیم Supabase کامل نیست؛ فایل SUPABASE_SETUP.md را دنبال کنید.",true);const email=$("authEmail").value.trim(),password=$("authPassword").value;$("authSubmit").disabled=true;status(isSignup?"در حال ساخت حساب...":"در حال ورود...");try{if(isSignup){const username=$("authUsername").value.trim().toLowerCase();if(!/^[a-z0-9_]{3,24}$/.test(username))throw Error("نام کاربری باید ۳ تا ۲۴ حرف انگلیسی، عدد یا زیرخط باشد.");const r=await client.auth.signUp({email,password,options:{data:{username,display_name:username}}});if(r.error)throw r.error;if(!r.data.session){status("حساب ساخته شد. ایمیل تأیید را بررسی کنید؛ سپس وارد شوید.");return;}await loadProfile(r.data.user);}else{const r=await client.auth.signInWithPassword({email,password});if(r.error)throw r.error;await loadProfile(r.data.user);}}catch(err){status(err.message||"عملیات انجام نشد.",true);}finally{$("authSubmit").disabled=false;}}
+  function requestForm(type){if(!window.current21GameUser){alert("ابتدا وارد حساب شوید.");return;}const wd=type==="withdrawal";const body=['<p>'+(wd?"درخواست برداشت ژتون آزمایشی":"درخواست شارژ ژتون آزمایشی")+'</p>','<p>موجودی: <strong>'+Number(profile?.demo_chips||0).toLocaleString("fa-IR")+' ژتون</strong></p>','<label>مبلغ ژتون</label><input id="reqAmount" type="number" min="1" step="1" placeholder="مبلغ" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">',wd?'<input id="reqRef" placeholder="توضیح درخواست" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">':'<label>روش درخواست</label><select id="reqMethod" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff"><option value="card_transfer">کارت به کارت (بررسی دستی)</option><option value="voucher">ووچر (بررسی دستی)</option><option value="manual">هماهنگی با مدیر</option></select><input id="reqRef" placeholder="شماره پیگیری یا توضیح" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">','<p style="font-size:12px;color:#9fb0c6">این نسخه فقط ژتون آزمایشی ثبت می‌کند؛ پرداخت واقعی انجام نمی‌شود.</p><button id="reqSubmit">ثبت درخواست</button><p id="reqStatus"></p>'].join("");window.open21GameAccountModal(wd?"درخواست برداشت ژتون":"درخواست شارژ ژتون",body);$("reqSubmit").onclick=async()=>{const amount=Number($("reqAmount").value),ref=$("reqRef").value.trim(),method=wd?"manual":$("reqMethod").value,msg=$("reqStatus");if(!Number.isSafeInteger(amount)||amount<=0){msg.textContent="مبلغ معتبر وارد کنید.";return;}if(wd&&amount>Number(profile?.demo_chips||0)){msg.textContent="موجودی ژتون کافی نیست.";return;}msg.textContent="در حال ثبت...";$("reqSubmit").disabled=true;const r=await client.from("wallet_requests").insert({user_id:window.current21GameUser.id,request_type:type,amount,method,reference:ref||null});$("reqSubmit").disabled=false;if(r.error){msg.textContent="ثبت نشد: "+r.error.message;return;}msg.textContent="درخواست ثبت شد و پس از بررسی مدیر نتیجه اعلام می‌شود.";};}
+  async function adminPanel(){if(profile?.role!=="admin")return;window.open21GameAccountModal("پنل مدیریت — درخواست‌های ژتون","<p>در حال بارگذاری...</p>");const r=await client.from("wallet_requests").select("id,user_id,request_type,amount,method,reference,status,profiles(username,display_name)").eq("status","pending").order("created_at",{ascending:true}).limit(100);if(r.error){$("accountBody").textContent="خطا: "+r.error.message;return;}if(!r.data.length){$("accountBody").innerHTML="<p>درخواستی در انتظار بررسی نیست.</p>";return;} $("accountBody").innerHTML=r.data.map(x=>'<article style="padding:12px;margin:10px 0;background:#0f1724;border-radius:12px"><strong>'+esc(x.profiles?.display_name||x.profiles?.username||"کاربر")+'</strong><p>'+(x.request_type==="chip_topup"?"شارژ ژتون":"برداشت ژتون")+' · '+Number(x.amount).toLocaleString("fa-IR")+' ژتون</p><p>روش: '+esc(x.method)+' · توضیح: '+esc(x.reference||"—")+'</p><button data-review="'+x.id+'" data-approve="true">تأیید</button> <button data-review="'+x.id+'" data-approve="false">رد درخواست</button></article>').join("");$("accountBody").querySelectorAll("[data-review]").forEach(b=>b.onclick=async()=>{b.disabled=true;const z=await client.rpc("admin_review_wallet_request",{p_request_id:b.dataset.review,p_approve:b.dataset.approve==="true",p_note:"بررسی از پنل مدیر"});if(z.error){alert("انجام نشد: "+z.error.message);b.disabled=false;return;}await adminPanel();await refreshProfile();});}
+  async function init(){const url=window.SUPABASE_URL,key=window.SUPABASE_ANON_KEY;if(!window.supabase||!url||!key||url.includes("YOUR_SUPABASE")||key.includes("YOUR_SUPABASE")){status("تنظیم Supabase هنوز انجام نشده است. فایل SUPABASE_SETUP.md را دنبال کنید.",true);return;}client=window.supabase.createClient(url,key);window.supabase21Game=client;const r=await client.auth.getSession();if(r.error){status(r.error.message,true);return;}if(r.data.session){try{await loadProfile(r.data.session.user);}catch(e){status("پروفایل پیدا نشد. schema.sql را در Supabase اجرا کنید.",true);}}client.auth.onAuthStateChange(async(_ev,s)=>{if(s&&!window.current21GameUser){try{await loadProfile(s.user);}catch(e){status(e.message,true);}}});}
+  window.open21GameAccountModal=(title,body)=>{$("accountTitle").textContent=title;$("accountBody").innerHTML=body;$("accountModal").classList.remove("hidden");};
+  window.addEventListener("DOMContentLoaded",()=>{$("authForm").addEventListener("submit",submitAuth);$("authModeToggle").addEventListener("click",()=>setMode(!isSignup));$("signOutBtn").addEventListener("click",async()=>{if(client)await client.auth.signOut();profile=null;window.current21GameUser=null;$("signedInName").textContent="مهمان";$("signOutBtn").classList.add("hidden");$("adminPanelBtn").classList.add("hidden");setWallet(0);$("authGate").classList.remove("auth-hidden");setMode(false);});$("chipRequestBtn").addEventListener("click",()=>requestForm("chip_topup"));$("withdrawBtn").addEventListener("click",()=>requestForm("withdrawal"));$("adminPanelBtn").addEventListener("click",adminPanel);$("balanceBtn").addEventListener("click",()=>requestForm("chip_topup"));init();});
 })();
