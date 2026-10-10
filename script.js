@@ -10,14 +10,18 @@ function score(hand) {
 function isSpecialWin(hand) {
   if (hand.length === 2 && hand.filter(c => c === "A").length === 2) return true;
   if (hand.length === 2 && hand.includes("A") && hand.includes("10")) return true;
-  if (hand.length === 5 && hand.every(c => ["J", "Q", "K"].includes(c))) return true;
+  if (hand.length === 5 && score(hand) === 21) return true;
   return false;
 }
 
 const tables = [20000, 30000, 40000, 50000, 50000, 60000, 70000, 80000, 90000, 100000];
-let wallet = 1000000, currentTable = null, bank = 0, banker = 0, bankRound = 1, players = [], deck = [], activePlayer = 1;
+let wallet = 1000000, currentTable = null, bank = 0, banker = 0, bankRound = 1, players = [], deck = [], activePlayer = 1, tableCapacity = 6;
 let bankerHand = [], playerHand = [], playerDone = false, bankerTurn = false, askechi = true, dealTimer = null, battleSettled = false, bankerDrewThisHand = false;
 let soundEnabled = true;
+let battleMessage = "";
+let roundEnded = false;
+let pendingBankerFunding = false;
+let playersHandledThisBankRound = 0;
 
 const names = ["بازیکن ۱", "بازیکن ۲", "بازیکن ۳", "بازیکن ۴", "بازیکن ۵", "بازیکن ۶"];
 const $ = id => document.getElementById(id);
@@ -58,6 +62,9 @@ function cardsText(hand) {
 function cardBack() {
   return `<span class="playing-card card-back"></span>`;
 }
+function hiddenCards(count) {
+  return Array.from({ length: Math.max(1, count) }, () => cardBack()).join("");
+}
 
 // ===== Deck =====
 const fullDeck = () => {
@@ -94,10 +101,20 @@ function renderTables() {
 }
 
 function joinTable(i) {
+  const entered = window.prompt("تعداد بازیکنان این میز را انتخاب کنید (۲ تا ۶):", "6");
+  if (entered === null) return;
+  const capacity = Number(entered);
+  if (!Number.isInteger(capacity) || capacity < 2 || capacity > 6) {
+    window.alert("تعداد بازیکنان باید عددی بین ۲ تا ۶ باشد.");
+    return;
+  }
+  tableCapacity = capacity;
   currentTable = i;
+  battleMessage = "";
+  roundEnded = false;
   bank = tables[i] * 3;
   bankRound = 1;
-  players = names.map(name => ({ name, hand: [], done: false, balance: 1000000 }));
+  players = names.slice(0, tableCapacity).map(name => ({ name, hand: [], done: false, balance: 1000000 }));
   banker = null;
   activePlayer = 0;
   shuffle();
@@ -127,7 +144,9 @@ function renderAskechi(current) {
   $("handInfo").innerHTML = "";
   $("cardChoices").innerHTML = "";
   $("standBtn").style.display = "none";
+  $("closeBankBtn").style.display = "none";
   $("nextRoundBtn").style.display = "none";
+  $("nextPlayerBtn").style.display = "none";
   $("seats").innerHTML = players.map((p, i) => `
     <div class="seat s${i} ${i === current ? "active" : ""}">
       <div class="avatar">👤</div>
@@ -145,11 +164,12 @@ function dealAskechi(index) {
     renderAskechi(index);
     if (c === "A") {
       banker = index;
+      players[banker].balance -= tables[currentTable] * 3;
       dealTimer = setTimeout(() => {
         askechi = false;
         activePlayer = (banker + 1) % players.length;
         $("standBtn").style.display = "block";
-        $("nextRoundBtn").style.display = "block";
+        $("nextRoundBtn").style.display = "none";
         $("tableInfo").textContent = `مبلغ پایه: ${money(tables[currentTable])} تومان | بانکدار: ${players[banker].name} | دور بانکداری: ۱ از ۳`;
         startBankingRound();
       }, 900);
@@ -161,6 +181,10 @@ function dealAskechi(index) {
 
 // ===== Banking Round =====
 function startBankingRound() {
+  roundEnded = false;
+  battleMessage = "";
+  $("nextRoundBtn").style.display = "none";
+  $("nextPlayerBtn").style.display = "none";
   shuffle();
   players.forEach(p => { p.hand = []; p.done = false; });
   playerHand = [];
@@ -168,6 +192,7 @@ function startBankingRound() {
   bankerTurn = false;
   battleSettled = false;
   bankerDrewThisHand = false;
+  playersHandledThisBankRound = 0;
   activePlayer = (banker + 1) % players.length;
 
   for (let i = 0; i < players.length; i++) {
@@ -180,14 +205,24 @@ function startBankingRound() {
 }
 
 function beginPlayer() {
+  if (roundEnded) return;
+  const base = tables[currentTable];
+  if (bank < base) {
+    endBankRound();
+    return;
+  }
   if (activePlayer === banker) {
     nextPlayer();
     return;
   }
-  const base = tables[currentTable];
   if (players[activePlayer].balance < base) {
     players[activePlayer].done = true;
-    nextPlayer();
+    battleSettled = true;
+    playersHandledThisBankRound++;
+    battleMessage = `${players[activePlayer].name} موجودی کافی برای این دست ندارد`;
+    playerHand = [];
+    bankerTurn = false;
+    render();
     return;
   }
   players[activePlayer].balance -= base;
@@ -204,8 +239,13 @@ function render() {
   $("bankAmount").textContent = money(bank);
   const base = tables[currentTable];
   const chipCount = Math.max(0, Math.min(12, Math.round(bank / base)));
-  $("bankChips").textContent = "🪙".repeat(chipCount) || "—";
-  $("status").textContent = bankerTurn ? "نوبت بانکدار" : `نوبت ${players[activePlayer].name}`;
+  $("bankChips").innerHTML = chipCount
+    ? Array.from({ length: chipCount }, (_, i) => `<span class="chip-token chip-${i % 4}" style="--chip-index:${i}" aria-hidden="true"></span>`).join("")
+    : '<span class="empty-bank">—</span>';
+  $("status").textContent = battleMessage || (roundEnded ? "دور بانکداری تمام شد" : (battleSettled ? "نتیجه ثبت شد" : (bankerTurn ? "نوبت بانکدار" : `نوبت ${players[activePlayer].name}`)));
+  $("standBtn").style.display = bankerTurn || battleSettled || roundEnded ? "none" : "block";
+  $("closeBankBtn").style.display = bankerTurn && !battleSettled && !roundEnded ? "block" : "none";
+  $("nextPlayerBtn").style.display = battleSettled && !roundEnded ? "block" : "none";
 
   $("seats").innerHTML = players.map((p, i) => `
     <div class="seat s${i} ${i === banker ? "banker" : ""} ${i === activePlayer && !bankerTurn ? "active" : ""}">
@@ -213,16 +253,22 @@ function render() {
       <div class="name">${p.name}</div>
       <div class="tag">${i === banker ? "بانکدار" : ""}</div>
       <div class="cards">${
-        i === banker ? cardsText(bankerHand) :
-        i === activePlayer ? cardsText(playerHand) :
-        cardBack()
+        battleSettled
+          ? hiddenCards(p.hand.length || (i === banker ? bankerHand.length : 1))
+          : i === banker
+            ? (bankerTurn ? cardsText(bankerHand) : hiddenCards(bankerHand.length))
+            : i === activePlayer
+              ? (bankerTurn ? hiddenCards(playerHand.length) : cardsText(playerHand))
+              : hiddenCards(p.hand.length)
       }</div>
       <div class="seat-balance">موجودی: ${money(p.balance)} تومان</div>
     </div>`).join("");
 
-  $("handInfo").innerHTML = bankerTurn
-    ? `دست بانکدار: <strong>${cardsText(bankerHand)}</strong> — ${score(bankerHand)}`
-    : `دست بازیکن فعال: <strong>${cardsText(playerHand)}</strong> — ${score(playerHand)}`;
+  $("handInfo").innerHTML = battleSettled
+    ? `<span class="privacy-note">کارت‌های هر دو طرف پس از پایان دست مخفی شدند.</span>`
+    : bankerTurn
+      ? `دست بانکدار: <strong>${cardsText(bankerHand)}</strong> — ${score(bankerHand)} <span class="privacy-note">دست بازیکن مخفی است</span>`
+      : `دست بازیکن: <strong>${cardsText(playerHand)}</strong> — ${score(playerHand)} <span class="privacy-note">دست بانکدار مخفی است</span>`;
 
   renderChoices();
 }
@@ -231,16 +277,14 @@ function renderChoices() {
   const box = $("cardChoices");
   box.innerHTML = "";
   if (bankerTurn) {
-    // Banker auto-plays with simple AI to prevent hang
-    setTimeout(() => {
-      if (!bankerTurn || battleSettled) return;
-      const bs = score(bankerHand);
-      if (bs < 17) {
-        bankDraw();
-      } else {
-        finishBattle();
-      }
-    }, 700);
+    const takeCard = document.createElement("button");
+    takeCard.textContent = "کارت بانکدار";
+    takeCard.onclick = bankDraw;
+    box.appendChild(takeCard);
+    const closeHand = document.createElement("button");
+    closeHand.textContent = "بسته";
+    closeHand.onclick = () => finishBattle();
+    box.appendChild(closeHand);
     return;
   }
   for (let n = 1; n <= 4; n++) {
@@ -252,7 +296,7 @@ function renderChoices() {
 }
 
 function requestCards(n) {
-  if (bankerTurn || playerDone) return;
+  if (roundEnded || battleSettled || bankerTurn || playerDone) return;
   for (let i = 0; i < n; i++) {
     playerHand.push(draw());
     if (score(playerHand) > 21) break;
@@ -263,7 +307,7 @@ function requestCards(n) {
 }
 
 function stand() {
-  if (bankerTurn || playerDone) return;
+  if (roundEnded || battleSettled || bankerTurn || playerDone) return;
   playerDone = true;
   players[activePlayer].hand = [...playerHand];
   bankerPlay();
@@ -302,13 +346,15 @@ function bankDraw() {
   bankerHand.push(draw());
   bankerDrewThisHand = true;
   render();
-  if (score(bankerHand) > 21 || score(bankerHand) >= 17) {
+  if (score(bankerHand) > 21 || score(bankerHand) >= 20) {
     finishBattle();
+    return;
   }
+  render();
 }
 
 function finishBattle(reason = "normal") {
-  if (battleSettled) return;
+  if (battleSettled || roundEnded) return;
   battleSettled = true;
   const base = tables[currentTable];
   const ps = score(playerHand);
@@ -327,54 +373,154 @@ function finishBattle(reason = "normal") {
   else playerWins = ps > bs;
 
   if (playerWins) {
-    bank = Math.max(0, bank - base);
+    // A battle may only be settled as a player win when the bank can cover the stake.
+    if (bank < base) {
+      battleMessage = "موجودی بانک برای پرداخت این دست کافی نیست";
+      roundEnded = true;
+      players[activePlayer].hand = [];
+      playerHand = [];
+      $("cardChoices").innerHTML = "";
+      $("nextRoundBtn").style.display = "none";
+      render();
+      return;
+    }
+    bank -= base;
     players[activePlayer].balance += base * 2;
-    $("status").textContent = `${players[activePlayer].name} برنده شد • ${money(base)} تومان از بانک گرفت`;
+    battleMessage = `${players[activePlayer].name} برنده شد • ${money(base)} تومان از بانک گرفت`;
   } else {
     bank += base;
-    $("status").textContent = `بانکدار برنده شد • ${money(base)} تومان به بانک اضافه شد`;
+    battleMessage = `بانکدار برنده شد • ${money(base)} تومان به بانک اضافه شد`;
   }
 
   players[activePlayer].hand = [];
   playerHand = [];
+  playersHandledThisBankRound++;
   if (bankerDrewThisHand) bankerHand = [];
 
   if (bank <= 0 || bank >= base * 9) {
-    $("cardChoices").innerHTML = "";
+    endBankRound();
     render();
     return;
   }
   render();
-  setTimeout(nextPlayer, 600);
+  // حرکت به نفر بعد فقط با فشردن دکمه توسط بانکدار/کاربر انجام می‌شود.
 }
 
 function nextPlayer() {
-  let next = (activePlayer + 1) % players.length;
-  if (next === banker) next = (next + 1) % players.length;
-  if (next === banker) {
+  if (roundEnded || !battleSettled) return;
+  $("nextPlayerBtn").style.display = "none";
+  if (playersHandledThisBankRound >= players.length - 1) {
     endBankRound();
+    render();
     return;
   }
+  battleMessage = "";
+  let next = (activePlayer + 1) % players.length;
+  if (next === banker) next = (next + 1) % players.length;
   activePlayer = next;
   playerHand = [];
   playerDone = false;
   bankerTurn = false;
+  battleSettled = false;
+  bankerDrewThisHand = false;
+  if (bankerHand.length === 0) bankerHand = [draw()];
   render();
   setTimeout(beginPlayer, 300);
 }
 
 function endBankRound() {
-  if (bank >= tables[currentTable] * 9 || bankRound >= 3) {
-    $("cardChoices").innerHTML = "";
-    $("status").textContent = "دور بانکداری تمام شد";
+  roundEnded = true;
+  battleMessage = "";
+  $("cardChoices").innerHTML = "";
+  const base = tables[currentTable];
+  const canContinue = bank >= base && bank < base * 9 && bankRound < 3;
+  if (canContinue) {
+    $("status").textContent = "دور تمام شد — برای ادامه، شروع دور بعد را بزنید";
+    $("nextRoundBtn").style.display = "block";
     return;
   }
-  $("cardChoices").innerHTML = "";
-  $("status").textContent = "دور تمام شد — دکمه شروع دور بعد را بزنید";
+
+  // بانک باقی‌مانده به بانکدار قبلی برمی‌گردد؛ نوبت بانکداری بدون رد کردن نفر بعدی می‌چرخد.
+  if (banker !== null && players[banker]) players[banker].balance += Math.max(0, bank);
+  const previousBanker = banker ?? 0;
+  const nextBanker = (previousBanker + 1) % players.length;
+  bank = 0;
+  banker = nextBanker;
+  bankRound = 1;
+  $("nextRoundBtn").style.display = "none";
+
+  if (players[banker].balance < base * 3) {
+    roundEnded = true;
+    pendingBankerFunding = true;
+    $("status").textContent = "موجودی بانکدار بعدی کافی نیست";
+    render();
+    showBankerFundingError();
+    return;
+  }
+
+  players[banker].balance -= base * 3;
+  bank = base * 3;
+  roundEnded = false;
+  pendingBankerFunding = false;
+  $("tableInfo").textContent = `مبلغ پایه: ${money(base)} تومان | بانکدار جدید: ${players[banker].name} | دور بانکداری: ۱ از ۳`;
+  startBankingRound();
+}
+
+function showBankerFundingError() {
+  const base = tables[currentTable];
+  const missing = Math.max(0, base * 3 - players[banker].balance);
+  accountModal("موجودی بانکدار کافی نیست", `
+    <p>نوبت بانکداری به <strong>${players[banker].name}</strong> رسیده، اما موجودی او برای شروع بانکداری کافی نیست.</p>
+    <p>موجودی لازم: <strong>${money(base * 3)} تومان</strong></p>
+    <p>کسری موجودی: <strong>${money(missing)} تومان</strong></p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+      <button onclick="leaveTableDueToFunds()">ترک میز</button>
+      <button onclick="openBankerTopUp()">افزایش موجودی</button>
+    </div>`);
+}
+
+function leaveTableDueToFunds() {
+  pendingBankerFunding = false;
+  closeAccount();
+  $("modal").classList.add("hidden");
+  currentTable = null;
+  renderTables();
+}
+
+function openBankerTopUp() {
+  showBalance();
+  const note = document.createElement("p");
+  note.textContent = "پس از شارژ حساب، موجودی بانکدار را دوباره بررسی کنید.";
+  $("accountBody").appendChild(note);
+  const retry = document.createElement("button");
+  retry.textContent = "بررسی مجدد و ادامه بازی";
+  retry.style.marginTop = "12px";
+  retry.onclick = retryBankerFunding;
+  $("accountBody").appendChild(retry);
+}
+
+function retryBankerFunding() {
+  if (!pendingBankerFunding || currentTable === null || !players[banker]) return;
+  const base = tables[currentTable];
+  if (players[banker].balance < base * 3) {
+    showBankerFundingError();
+    return;
+  }
+  closeAccount();
+  players[banker].balance -= base * 3;
+  bank = base * 3;
+  bankRound = 1;
+  pendingBankerFunding = false;
+  roundEnded = false;
+  $("tableInfo").textContent = `مبلغ پایه: ${money(base)} تومان | بانکدار جدید: ${players[banker].name} | دور بانکداری: ۱ از ۳`;
+  startBankingRound();
 }
 
 function newBankRound() {
-  if (bankRound >= 3 || bank >= tables[currentTable] * 9) return;
+  if (!roundEnded || currentTable === null || bankRound >= 3 || bank < tables[currentTable] || bank >= tables[currentTable] * 9) return;
+  roundEnded = false;
+  battleMessage = "";
+  $("nextRoundBtn").style.display = "none";
   bankRound++;
   $("tableInfo").textContent = `مبلغ پایه: ${money(tables[currentTable])} تومان | بانکدار: ${players[banker].name} | دور بانکداری: ${bankRound} از ۳`;
   startBankingRound();
@@ -384,6 +530,10 @@ function newBankRound() {
 function bankMenu() {
   document.getElementById("sideMenu").classList.toggle("open");
   document.getElementById("menuOverlay").classList.toggle("show");
+}
+
+function escapeHTML(value) {
+  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 function accountModal(title, body) {
@@ -417,7 +567,7 @@ function submitCardTransfer() {
   const n = Number($("transferAmount").value);
   const ref = $("transferRef").value.trim();
   if (!Number.isFinite(n) || n <= 0 || !ref) return;
-  accountModal("کارت به کارت", `<p>درخواست شارژ به مبلغ <strong>${money(n)} تومان</strong> با شماره پیگیری <strong>${ref}</strong> ثبت شد.</p>`);
+  accountModal("کارت به کارت", `<p>درخواست شارژ به مبلغ <strong>${money(n)} تومان</strong> با شماره پیگیری <strong>${escapeHTML(ref)}</strong> ثبت شد.</p>`);
 }
 
 function showVoucher() {
@@ -430,7 +580,7 @@ function showVoucher() {
 function submitVoucher() {
   const code = $("voucherCode").value.trim();
   if (!code) return;
-  accountModal("ووچر", `<p>کد <strong>${code}</strong> دریافت شد.</p>`);
+  accountModal("ووچر", `<p>کد <strong>${escapeHTML(code)}</strong> دریافت شد.</p>`);
 }
 
 function showWithdraw() {
@@ -452,7 +602,9 @@ function requestWithdraw() {
 
 // ===== Events =====
 $("standBtn").onclick = stand;
+$("closeBankBtn").onclick = () => { if (bankerTurn && !battleSettled && !roundEnded) finishBattle(); };
 $("nextRoundBtn").onclick = newBankRound;
+$("nextPlayerBtn").onclick = nextPlayer;
 $("closeModal").onclick = () => $("modal").classList.add("hidden");
 $("modal").addEventListener("click", e => {
   if (e.target === $("modal")) $("modal").classList.add("hidden");
