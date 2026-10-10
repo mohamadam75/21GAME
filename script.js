@@ -140,6 +140,7 @@ function renderAskechi(current) {
   $("handInfo").innerHTML = "";
   $("cardChoices").innerHTML = "";
   $("standBtn").style.display = "none";
+  $("closeBankBtn").style.display = "none";
   $("nextRoundBtn").style.display = "none";
   $("seats").innerHTML = players.map((p, i) => `
     <div class="seat s${i} ${i === current ? "active" : ""}">
