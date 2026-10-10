@@ -18,7 +18,7 @@
   </div>
   <div class="header-right">
     <button id="soundToggle" class="sound-btn" title="صدا">🔊</button>
-    <div class="balance">موجودی: <strong id="wallet">1,000,000</strong> تومان</div>
+    <div class="balance"><span id="signedInName">مهمان</span> · ژتون آزمایشی: <strong id="wallet">۰</strong></div><button id="signOutBtn" class="signout-btn hidden" type="button">خروج</button>
   </div>
 </header>
 
@@ -50,6 +50,23 @@
       <p>بانکدار با ۳ برابر پایه شروع می‌کند و حداکثر ۳ دور می‌ماند. اگر بانک صفر یا ۹ برابر شود بانکداری تمام است.</p>
     </div>
   </div>
+</div>
+
+<div id="authGate" class="auth-gate">
+  <form id="authForm" class="auth-card">
+    <div class="auth-brand">🎴</div>
+    <h2 id="authHeading">ورود به بازی ۲۱</h2>
+    <p id="authIntro">برای انتخاب میز و بازی با دیگران وارد حساب خود شوید.</p>
+    <label for="authUsername" id="usernameLabel" class="hidden">نام کاربری</label>
+    <input id="authUsername" class="auth-input hidden" autocomplete="username" minlength="3" maxlength="24" placeholder="نام کاربری">
+    <label for="authEmail">ایمیل</label>
+    <input id="authEmail" class="auth-input" type="email" autocomplete="email" required placeholder="you@example.com">
+    <label for="authPassword">رمز عبور</label>
+    <input id="authPassword" class="auth-input" type="password" autocomplete="current-password" minlength="8" required placeholder="حداقل ۸ کاراکتر">
+    <button id="authSubmit" class="auth-submit" type="submit">ورود</button>
+    <button id="authModeToggle" class="auth-switch" type="button">حساب ندارید؟ ثبت‌نام کنید</button>
+    <p id="authStatus" class="auth-status" role="status"></p>
+  </form>
 </div>
 
 <main>
@@ -111,6 +128,9 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="auth.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
