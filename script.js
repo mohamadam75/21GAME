@@ -20,6 +20,7 @@ let bankerHand = [], playerHand = [], playerDone = false, bankerTurn = false, as
 let soundEnabled = true;
 let battleMessage = "";
 let roundEnded = false;
+let pendingBankerFunding = false;
 
 const names = ["بازیکن ۱", "بازیکن ۲", "بازیکن ۳", "بازیکن ۴", "بازیکن ۵", "بازیکن ۶"];
 const $ = id => document.getElementById(id);
@@ -412,28 +413,77 @@ function endBankRound() {
     return;
   }
 
-  // در پایان دوره، بانکدار فعلی بانک باقی‌مانده را دریافت می‌کند.
+  // بانک باقی‌مانده به بانکدار قبلی برمی‌گردد؛ نوبت بانکداری بدون رد کردن نفر بعدی می‌چرخد.
   if (banker !== null && players[banker]) players[banker].balance += Math.max(0, bank);
   const previousBanker = banker ?? 0;
+  const nextBanker = (previousBanker + 1) % players.length;
   bank = 0;
-  let nextBanker = null;
-  for (let step = 1; step <= players.length; step++) {
-    const candidate = (previousBanker + step) % players.length;
-    if (players[candidate].balance >= base * 3) {
-      nextBanker = candidate;
-      break;
-    }
-  }
+  banker = nextBanker;
+  bankRound = 1;
   $("nextRoundBtn").style.display = "none";
-  if (nextBanker === null) {
-    $("status").textContent = "دور بانکداری تمام شد؛ بازیکن واجد شرایط برای بانکداری وجود ندارد";
+
+  if (players[banker].balance < base * 3) {
+    roundEnded = true;
+    pendingBankerFunding = true;
+    $("status").textContent = "موجودی بانکدار بعدی کافی نیست";
     render();
+    showBankerFundingError();
     return;
   }
-  banker = nextBanker;
+
+  players[banker].balance -= base * 3;
+  bank = base * 3;
+  roundEnded = false;
+  pendingBankerFunding = false;
+  $("tableInfo").textContent = `مبلغ پایه: ${money(base)} تومان | بانکدار جدید: ${players[banker].name} | دور بانکداری: ۱ از ۳`;
+  startBankingRound();
+}
+
+function showBankerFundingError() {
+  const base = tables[currentTable];
+  const missing = Math.max(0, base * 3 - players[banker].balance);
+  accountModal("موجودی بانکدار کافی نیست", `
+    <p>نوبت بانکداری به <strong>${players[banker].name}</strong> رسیده، اما موجودی او برای شروع بانکداری کافی نیست.</p>
+    <p>موجودی لازم: <strong>${money(base * 3)} تومان</strong></p>
+    <p>کسری موجودی: <strong>${money(missing)} تومان</strong></p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+      <button onclick="leaveTableDueToFunds()">ترک میز</button>
+      <button onclick="openBankerTopUp()">افزایش موجودی</button>
+    </div>`);
+}
+
+function leaveTableDueToFunds() {
+  pendingBankerFunding = false;
+  closeAccount();
+  $("modal").classList.add("hidden");
+  currentTable = null;
+  renderTables();
+}
+
+function openBankerTopUp() {
+  showBalance();
+  const note = document.createElement("p");
+  note.textContent = "پس از شارژ حساب، موجودی بانکدار را دوباره بررسی کنید.";
+  $("accountBody").appendChild(note);
+  const retry = document.createElement("button");
+  retry.textContent = "بررسی مجدد و ادامه بازی";
+  retry.style.marginTop = "12px";
+  retry.onclick = retryBankerFunding;
+  $("accountBody").appendChild(retry);
+}
+
+function retryBankerFunding() {
+  if (!pendingBankerFunding || currentTable === null || !players[banker]) return;
+  const base = tables[currentTable];
+  if (players[banker].balance < base * 3) {
+    showBankerFundingError();
+    return;
+  }
+  closeAccount();
   players[banker].balance -= base * 3;
   bank = base * 3;
   bankRound = 1;
+  pendingBankerFunding = false;
   roundEnded = false;
   $("tableInfo").textContent = `مبلغ پایه: ${money(base)} تومان | بانکدار جدید: ${players[banker].name} | دور بانکداری: ۱ از ۳`;
   startBankingRound();
