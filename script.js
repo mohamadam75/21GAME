@@ -399,6 +399,10 @@ function bankMenu() {
   document.getElementById("menuOverlay").classList.toggle("show");
 }
 
+function escapeHTML(value) {
+  return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
 function accountModal(title, body) {
   $("accountTitle").textContent = title;
   $("accountBody").innerHTML = body;
@@ -430,7 +434,7 @@ function submitCardTransfer() {
   const n = Number($("transferAmount").value);
   const ref = $("transferRef").value.trim();
   if (!Number.isFinite(n) || n <= 0 || !ref) return;
-  accountModal("کارت به کارت", `<p>درخواست شارژ به مبلغ <strong>${money(n)} تومان</strong> با شماره پیگیری <strong>${ref}</strong> ثبت شد.</p>`);
+  accountModal("کارت به کارت", `<p>درخواست شارژ به مبلغ <strong>${money(n)} تومان</strong> با شماره پیگیری <strong>${escapeHTML(ref)}</strong> ثبت شد.</p>`);
 }
 
 function showVoucher() {
@@ -443,7 +447,7 @@ function showVoucher() {
 function submitVoucher() {
   const code = $("voucherCode").value.trim();
   if (!code) return;
-  accountModal("ووچر", `<p>کد <strong>${code}</strong> دریافت شد.</p>`);
+  accountModal("ووچر", `<p>کد <strong>${escapeHTML(code)}</strong> دریافت شد.</p>`);
 }
 
 function showWithdraw() {
