@@ -92,7 +92,10 @@ function shuffle() {
   }
 }
 function draw() {
-  if (deck.length === 0) shuffle();
+  if (deck.length === 0) {
+    if (askechi) shuffle();
+    else return null;
+  }
   playCardSound();
   return deck.pop();
 }
@@ -182,7 +185,7 @@ function dealAskechi(index) {
         $("standBtn").style.display = "block";
         $("nextRoundBtn").style.display = "none";
         $("tableInfo").textContent = `مبلغ پایه: ${money(tables[currentTable])} تومان | بانکدار: ${players[banker].name} | دور بانکداری: ۱ از ۳`;
-        startBankingRound();
+        startBankingRound(true);
       }, 900);
       return;
     }
@@ -191,12 +194,12 @@ function dealAskechi(index) {
 }
 
 // ===== Banking Round =====
-function startBankingRound() {
+function startBankingRound(resetDeck = false) {
   roundEnded = false;
   battleMessage = "";
   $("nextRoundBtn").style.display = "none";
   $("nextPlayerBtn").style.display = "none";
-  shuffle();
+  if (resetDeck) shuffle();
   players.forEach(p => { p.hand = []; p.done = false; });
   playerHand = [];
   playerDone = false;
@@ -314,7 +317,15 @@ function renderChoices() {
 function requestCards(n) {
   if (roundEnded || battleSettled || bankerTurn || playerDone) return;
   for (let i = 0; i < n; i++) {
-    playerHand.push(draw());
+    const nextCard = draw();
+    if (!nextCard) {
+      battleMessage = "دسته کارت تمام شده؛ دست با کارت‌های موجود ادامه پیدا می‌کند";
+      players[activePlayer].hand = [...playerHand];
+      playerDone = true;
+      bankerPlay();
+      return;
+    }
+    playerHand.push(nextCard);
     if (score(playerHand) > 21) break;
   }
   players[activePlayer].hand = [...playerHand];
@@ -359,7 +370,13 @@ function bankerPlay() {
 
 function bankDraw() {
   if (!bankerTurn || battleSettled) return;
-  bankerHand.push(draw());
+  const nextCard = draw();
+  if (!nextCard) {
+    battleMessage = "دسته کارت تمام شده؛ بانکدار کارت دیگری ندارد";
+    finishBattle();
+    return;
+  }
+  bankerHand.push(nextCard);
   bankerDrewThisHand = true;
   render();
   if (score(bankerHand) > 21 || score(bankerHand) >= 20) {
@@ -439,7 +456,16 @@ function nextPlayer() {
   bankerTurn = false;
   battleSettled = false;
   bankerDrewThisHand = false;
-  if (bankerHand.length === 0) bankerHand = [draw()];
+  if (bankerHand.length === 0) {
+    const nextBankerCard = draw();
+    if (!nextBankerCard) {
+      battleMessage = "دسته کارت تمام شده؛ این دور بانکداری پایان می‌یابد";
+      endBankRound();
+      render();
+      return;
+    }
+    bankerHand = [nextBankerCard];
+  }
   render();
   setTimeout(beginPlayer, 300);
 }
@@ -449,7 +475,7 @@ function endBankRound() {
   battleMessage = "";
   $("cardChoices").innerHTML = "";
   const base = tables[currentTable];
-  const canContinue = bank >= base && bank < base * 9 && bankRound < 3;
+  const canContinue = bank >= base && bank < base * 9 && bankRound < 3 && deck.length >= players.length + 1;
   if (canContinue) {
     $("status").textContent = "دور تمام شد — برای ادامه، شروع دور بعد را بزنید";
     $("nextRoundBtn").style.display = "block";
@@ -479,7 +505,7 @@ function endBankRound() {
   roundEnded = false;
   pendingBankerFunding = false;
   $("tableInfo").textContent = `مبلغ پایه: ${money(base)} تومان | بانکدار جدید: ${players[banker].name} | دور بانکداری: ۱ از ۳`;
-  startBankingRound();
+  startBankingRound(true);
 }
 
 function showBankerFundingError() {
@@ -529,7 +555,7 @@ function retryBankerFunding() {
   pendingBankerFunding = false;
   roundEnded = false;
   $("tableInfo").textContent = `مبلغ پایه: ${money(base)} تومان | بانکدار جدید: ${players[banker].name} | دور بانکداری: ۱ از ۳`;
-  startBankingRound();
+  startBankingRound(true);
 }
 
 function newBankRound() {
