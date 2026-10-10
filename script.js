@@ -287,12 +287,10 @@ function renderChoices() {
     box.appendChild(closeHand);
     return;
   }
-  for (let n = 1; n <= 4; n++) {
-    const b = document.createElement("button");
-    b.textContent = `${n} کارت`;
-    b.onclick = () => requestCards(n);
-    box.appendChild(b);
-  }
+  const takeCard = document.createElement("button");
+  takeCard.textContent = "کارت بده";
+  takeCard.onclick = () => requestCards(1);
+  box.appendChild(takeCard);
 }
 
 function requestCards(n) {
