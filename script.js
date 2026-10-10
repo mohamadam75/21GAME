@@ -15,7 +15,7 @@ function isSpecialWin(hand) {
 }
 
 const tables = [20000, 30000, 40000, 50000, 50000, 60000, 70000, 80000, 90000, 100000];
-let wallet = 1000000, currentTable = null, bank = 0, banker = 0, bankRound = 1, players = [], deck = [], activePlayer = 1;
+let wallet = 1000000, currentTable = null, bank = 0, banker = 0, bankRound = 1, players = [], deck = [], activePlayer = 1, tableCapacity = 6;
 let bankerHand = [], playerHand = [], playerDone = false, bankerTurn = false, askechi = true, dealTimer = null, battleSettled = false, bankerDrewThisHand = false;
 let soundEnabled = true;
 let battleMessage = "";
@@ -96,12 +96,20 @@ function renderTables() {
 }
 
 function joinTable(i) {
+  const entered = window.prompt("تعداد بازیکنان این میز را انتخاب کنید (۲ تا ۶):", "6");
+  if (entered === null) return;
+  const capacity = Number(entered);
+  if (!Number.isInteger(capacity) || capacity < 2 || capacity > 6) {
+    window.alert("تعداد بازیکنان باید عددی بین ۲ تا ۶ باشد.");
+    return;
+  }
+  tableCapacity = capacity;
   currentTable = i;
   battleMessage = "";
   roundEnded = false;
   bank = tables[i] * 3;
   bankRound = 1;
-  players = names.map(name => ({ name, hand: [], done: false, balance: 1000000 }));
+  players = names.slice(0, tableCapacity).map(name => ({ name, hand: [], done: false, balance: 1000000 }));
   banker = null;
   activePlayer = 0;
   shuffle();
