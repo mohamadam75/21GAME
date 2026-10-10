@@ -306,3 +306,58 @@ button{
   .s5{left:-35px}
   .playing-card{width:40px;height:56px}
 }
+
+
+/* More tactile, lively chips in the center bank */
+.chips{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:42px;
+  gap:0;
+  letter-spacing:0;
+  margin-bottom:7px;
+  perspective:500px;
+}
+.chip-token{
+  position:relative;
+  display:inline-block;
+  width:31px;
+  height:31px;
+  flex:0 0 31px;
+  margin-left:-8px;
+  border-radius:50%;
+  border:3px dashed rgba(255,255,255,.88);
+  box-shadow:0 4px 0 rgba(0,0,0,.35), 0 6px 10px rgba(0,0,0,.25), inset 0 0 0 3px rgba(255,255,255,.2);
+  animation:chip-arrive .42s cubic-bezier(.2,.85,.25,1.25) both, chip-idle 2.8s ease-in-out infinite;
+  animation-delay:calc(var(--chip-index) * 45ms), calc(.42s + var(--chip-index) * 90ms);
+  transform-origin:center bottom;
+}
+.chip-token:first-child{margin-left:0}
+.chip-token::after{
+  content:"";
+  position:absolute;
+  inset:6px;
+  border:1px solid rgba(255,255,255,.65);
+  border-radius:50%;
+  background:radial-gradient(circle at 35% 28%,rgba(255,255,255,.55),rgba(255,255,255,.04) 65%);
+}
+.chip-0{background:repeating-conic-gradient(#f5f0d5 0 12deg,#cf443f 12deg 24deg); outline:1px solid #b82c2c}
+.chip-1{background:repeating-conic-gradient(#f5f0d5 0 12deg,#2d9a6d 12deg 24deg); outline:1px solid #14734b}
+.chip-2{background:repeating-conic-gradient(#f5f0d5 0 12deg,#3977d3 12deg 24deg); outline:1px solid #2356a5}
+.chip-3{background:repeating-conic-gradient(#f5f0d5 0 12deg,#e0b33d 12deg 24deg); outline:1px solid #ad8117}
+.empty-bank{color:#9ab9a8;font-size:18px}
+.privacy-note{display:inline-block;margin-right:8px;color:#9fb4ca;font-size:12px;font-weight:400}
+#nextPlayerBtn{background:linear-gradient(135deg,#6cc99a,#3aa976);color:#062b1a}
+@keyframes chip-arrive{
+  0%{opacity:0;transform:translateY(-18px) rotate(-35deg) scale(.45)}
+  75%{opacity:1;transform:translateY(3px) rotate(8deg) scale(1.08)}
+  100%{opacity:1;transform:translateY(0) rotate(0) scale(1)}
+}
+@keyframes chip-idle{
+  0%,100%{filter:brightness(1);transform:translateY(0)}
+  50%{filter:brightness(1.12);transform:translateY(-2px)}
+}
+@media(prefers-reduced-motion:reduce){
+  .chip-token{animation:none}
+}
