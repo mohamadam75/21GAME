@@ -24,7 +24,7 @@ function isSpecialWin(hand) {
 }
 
 const tables = [20000, 30000, 40000, 50000, 50000, 60000, 70000, 80000, 90000, 100000];
-let wallet = 1000000, currentTable = null, bank = 0, banker = 0, bankRound = 1, players = [], deck = [], activePlayer = 1, tableCapacity = 6;
+let wallet = 0, currentTable = null, bank = 0, banker = 0, bankRound = 1, players = [], deck = [], activePlayer = 1, tableCapacity = 6;
 let bankerHand = [], playerHand = [], playerDone = false, bankerTurn = false, askechi = true, dealTimer = null, battleSettled = false, bankerDrewThisHand = false;
 let soundEnabled = true;
 let battleMessage = "";
@@ -101,6 +101,8 @@ function draw() {
 }
 
 // ===== Tables =====
+window.setAuthenticatedWallet = function(value) { wallet = Math.max(0, Number(value) || 0); renderTables(); };
+
 function renderTables() {
   $("tables").innerHTML = tables.map((base, i) => {
     const ok = wallet >= base * 4;
