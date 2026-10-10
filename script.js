@@ -187,11 +187,16 @@ function startBankingRound() {
 }
 
 function beginPlayer() {
+  if (roundEnded) return;
+  const base = tables[currentTable];
+  if (bank < base) {
+    endBankRound();
+    return;
+  }
   if (activePlayer === banker) {
     nextPlayer();
     return;
   }
-  const base = tables[currentTable];
   if (players[activePlayer].balance < base) {
     players[activePlayer].done = true;
     nextPlayer();
@@ -334,7 +339,18 @@ function finishBattle(reason = "normal") {
   else playerWins = ps > bs;
 
   if (playerWins) {
-    bank = Math.max(0, bank - base);
+    // A battle may only be settled as a player win when the bank can cover the stake.
+    if (bank < base) {
+      battleMessage = "موجودی بانک برای پرداخت این دست کافی نیست";
+      roundEnded = true;
+      players[activePlayer].hand = [];
+      playerHand = [];
+      $("cardChoices").innerHTML = "";
+      $("nextRoundBtn").style.display = "none";
+      render();
+      return;
+    }
+    bank -= base;
     players[activePlayer].balance += base * 2;
     battleMessage = `${players[activePlayer].name} برنده شد • ${money(base)} تومان از بانک گرفت`;
   } else {
@@ -370,6 +386,9 @@ function nextPlayer() {
   playerHand = [];
   playerDone = false;
   bankerTurn = false;
+  battleSettled = false;
+  bankerDrewThisHand = false;
+  if (bankerHand.length === 0) bankerHand = [draw()];
   render();
   setTimeout(beginPlayer, 300);
 }
@@ -378,13 +397,13 @@ function endBankRound() {
   roundEnded = true;
   battleMessage = "";
   $("cardChoices").innerHTML = "";
-  const canContinue = bank > 0 && bank < tables[currentTable] * 9 && bankRound < 3;
+  const canContinue = bank >= tables[currentTable] && bank < tables[currentTable] * 9 && bankRound < 3;
   $("status").textContent = canContinue ? "دور تمام شد — برای ادامه، شروع دور بعد را بزنید" : "دور بانکداری تمام شد";
   $("nextRoundBtn").style.display = canContinue ? "block" : "none";
 }
 
 function newBankRound() {
-  if (!roundEnded || currentTable === null || bankRound >= 3 || bank <= 0 || bank >= tables[currentTable] * 9) return;
+  if (!roundEnded || currentTable === null || bankRound >= 3 || bank < tables[currentTable] || bank >= tables[currentTable] * 9) return;
   roundEnded = false;
   battleMessage = "";
   $("nextRoundBtn").style.display = "none";
