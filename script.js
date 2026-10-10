@@ -405,9 +405,39 @@ function endBankRound() {
   roundEnded = true;
   battleMessage = "";
   $("cardChoices").innerHTML = "";
-  const canContinue = bank >= tables[currentTable] && bank < tables[currentTable] * 9 && bankRound < 3;
-  $("status").textContent = canContinue ? "دور تمام شد — برای ادامه، شروع دور بعد را بزنید" : "دور بانکداری تمام شد";
-  $("nextRoundBtn").style.display = canContinue ? "block" : "none";
+  const base = tables[currentTable];
+  const canContinue = bank >= base && bank < base * 9 && bankRound < 3;
+  if (canContinue) {
+    $("status").textContent = "دور تمام شد — برای ادامه، شروع دور بعد را بزنید";
+    $("nextRoundBtn").style.display = "block";
+    return;
+  }
+
+  // در پایان دوره، بانکدار فعلی بانک باقی‌مانده را دریافت می‌کند.
+  if (banker !== null && players[banker]) players[banker].balance += Math.max(0, bank);
+  const previousBanker = banker ?? 0;
+  bank = 0;
+  let nextBanker = null;
+  for (let step = 1; step <= players.length; step++) {
+    const candidate = (previousBanker + step) % players.length;
+    if (players[candidate].balance >= base * 3) {
+      nextBanker = candidate;
+      break;
+    }
+  }
+  $("nextRoundBtn").style.display = "none";
+  if (nextBanker === null) {
+    $("status").textContent = "دور بانکداری تمام شد؛ بازیکن واجد شرایط برای بانکداری وجود ندارد";
+    render();
+    return;
+  }
+  banker = nextBanker;
+  players[banker].balance -= base * 3;
+  bank = base * 3;
+  bankRound = 1;
+  roundEnded = false;
+  $("tableInfo").textContent = `مبلغ پایه: ${money(base)} تومان | بانکدار جدید: ${players[banker].name} | دور بانکداری: ۱ از ۳`;
+  startBankingRound();
 }
 
 function newBankRound() {
