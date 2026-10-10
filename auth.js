@@ -14,3 +14,73 @@
   window.open21GameAccountModal=(title,body)=>{$("accountTitle").textContent=title;$("accountBody").innerHTML=body;$("accountModal").classList.remove("hidden");};
   window.addEventListener("DOMContentLoaded",()=>{$("authForm").addEventListener("submit",submitAuth);$("authModeToggle").addEventListener("click",()=>setMode(!isSignup));$("signOutBtn").addEventListener("click",async()=>{if(client)await client.auth.signOut();profile=null;window.current21GameUser=null;$("signedInName").textContent="مهمان";$("signOutBtn").classList.add("hidden");$("adminPanelBtn").classList.add("hidden");setWallet(0);$("authGate").classList.remove("auth-hidden");setMode(false);});$("chipRequestBtn").addEventListener("click",()=>requestForm("chip_topup"));$("withdrawBtn").addEventListener("click",()=>requestForm("withdrawal"));$("adminPanelBtn").addEventListener("click",adminPanel);$("balanceBtn").addEventListener("click",()=>requestForm("chip_topup"));init();});
 })();
+/* Live seating lobby: shared seats are synchronized through Supabase Realtime. Card actions remain disabled until the trusted game function is deployed. */
+(function(){
+  const $=id=>document.getElementById(id);
+  let channel=null, seatedTable=null;
+  const stakes=[20000,30000,40000,50000,50000,60000,70000,80000,90000,100000];
+  function cash(n){return Number(n||0).toLocaleString("fa-IR");}
+  async function renderLobby(tableIndex){
+    const client=window.supabase21Game;
+    const tableId=tableIndex+1;
+    const {data,error}=await client.from("table_seats").select("seat_no,user_id,profiles(username,display_name)").eq("table_id",tableId).order("seat_no");
+    if(error)throw error;
+    const seats=data||[];
+    $("seats").innerHTML=Array.from({length:6},(_,i)=>{
+      const p=seats.find(s=>s.seat_no===i+1);
+      const name=p?(p.profiles?.display_name||p.profiles?.username||"بازیکن"):"صندلی خالی";
+      const isMe=p&&p.user_id===window.current21GameUser?.id;
+      return '<div class="seat s'+i+' '+(isMe?"active":"")+'"><div class="avatar">'+(p?"👤":"＋")+'</div><div class="name">'+name.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")+'</div><div class="tag">'+(isMe?"شما":p?"بازیکن":"")+'</div><div class="cards">'+(p?"● ● ●":"")+'</div></div>';
+    }).join("");
+    $("status").textContent=seats.length>=2?"بازیکنان حاضرند؛ آماده‌سازی موتور بازی سرور لازم است":"در انتظار ورود بازیکنان دیگر";
+    $("handInfo").textContent=seats.length+" از ۶ صندلی پر است. کارت‌ها تا آماده‌شدن موتور امن بازی پخش نمی‌شوند.";
+    $("cardChoices").innerHTML="";
+    $("standBtn").style.display="none";$("closeBankBtn").style.display="none";$("nextPlayerBtn").style.display="none";$("nextRoundBtn").style.display="none";
+    $("bankAmount").textContent=cash(stakes[tableIndex]*3);
+    $("bankChips").innerHTML='<span class="empty-bank">لابی آنلاین</span>';
+    $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableIndex])+" ژتون آزمایشی · ظرفیت ۶ نفر";
+  }
+  async function joinOnlineTable(i){
+    const client=window.supabase21Game, user=window.current21GameUser;
+    if(!client||!user){alert("برای ورود به میز ابتدا وارد حساب شوید.");return;}
+    const stake=stakes[i];
+    if(Number(user.demo_chips||0)<stake*4){alert("برای این میز حداقل "+cash(stake*4)+" ژتون آزمایشی لازم است. از منو درخواست شارژ ژتون بدهید.");return;}
+    try{
+      const {data:existing,error:existingErr}=await client.from("table_seats").select("table_id,seat_no").eq("user_id",user.id);
+      if(existingErr)throw existingErr;
+      if(existing?.length && existing[0].table_id!==i+1){alert("شما هم‌اکنون روی میز دیگری نشسته‌اید. ابتدا آن میز را ترک کنید.");return;}
+      if(!existing?.length){
+        const {data:occupied,error}=await client.from("table_seats").select("seat_no").eq("table_id",i+1);
+        if(error)throw error;
+        const used=new Set((occupied||[]).map(x=>x.seat_no));
+        let seatNo=1;while(used.has(seatNo)&&seatNo<=6)seatNo++;
+        if(seatNo>6){alert("این میز پر است. میز دیگری انتخاب کنید.");return;}
+        const {error:insertErr}=await client.from("table_seats").insert({table_id:i+1,user_id:user.id,seat_no:seatNo});
+        if(insertErr)throw insertErr;
+      }
+      seatedTable=i+1;
+      if(channel){await client.removeChannel(channel);channel=null;}
+      channel=client.channel("table-seats-"+seatedTable)
+        .on("postgres_changes",{event:"*",schema:"public",table:"table_seats",filter:"table_id=eq."+seatedTable},()=>renderLobby(i).catch(console.error))
+        .subscribe();
+      $("modalTitle").textContent="میز "+(i+1);
+      $("modal").classList.remove("hidden");
+      $("leaveOnlineTable").classList.remove("hidden");
+      await renderLobby(i);
+    }catch(e){alert("ورود به میز انجام نشد: "+(e.message||e));}
+  }
+  async function leaveOnlineTable(){
+    const client=window.supabase21Game,user=window.current21GameUser;
+    if(!client||!user||!seatedTable)return;
+    const tableId=seatedTable;
+    const {error}=await client.from("table_seats").delete().eq("table_id",tableId).eq("user_id",user.id);
+    if(error){alert("ترک میز انجام نشد: "+error.message);return;}
+    if(channel){await client.removeChannel(channel);channel=null;}
+    seatedTable=null;$("leaveOnlineTable").classList.add("hidden");$("modal").classList.add("hidden");
+  }
+  window.addEventListener("DOMContentLoaded",()=>{
+    window.joinTable=joinOnlineTable;
+    $("leaveOnlineTable").addEventListener("click",leaveOnlineTable);
+    $("closeModal").addEventListener("click",()=>{if(seatedTable)leaveOnlineTable();});
+  });
+})();
