@@ -10,7 +10,7 @@ function score(hand) {
 function isSpecialWin(hand) {
   if (hand.length === 2 && hand.filter(c => c === "A").length === 2) return true;
   if (hand.length === 2 && hand.includes("A") && hand.includes("10")) return true;
-  if (hand.length === 5 && hand.every(c => ["J", "Q", "K"].includes(c))) return true;
+  if (hand.length === 5 && score(hand) === 21) return true;
   return false;
 }
 
@@ -60,6 +60,9 @@ function cardsText(hand) {
 }
 function cardBack() {
   return `<span class="playing-card card-back"></span>`;
+}
+function hiddenCards(count) {
+  return Array.from({ length: Math.max(1, count) }, () => cardBack()).join("");
 }
 
 // ===== Deck =====
@@ -179,6 +182,7 @@ function startBankingRound() {
   roundEnded = false;
   battleMessage = "";
   $("nextRoundBtn").style.display = "none";
+  $("nextPlayerBtn").style.display = "none";
   shuffle();
   players.forEach(p => { p.hand = []; p.done = false; });
   playerHand = [];
@@ -227,10 +231,13 @@ function render() {
   $("bankAmount").textContent = money(bank);
   const base = tables[currentTable];
   const chipCount = Math.max(0, Math.min(12, Math.round(bank / base)));
-  $("bankChips").textContent = "🪙".repeat(chipCount) || "—";
-  $("status").textContent = battleMessage || (roundEnded ? "دور بانکداری تمام شد" : (bankerTurn ? "نوبت بانکدار" : `نوبت ${players[activePlayer].name}`));
-  $("standBtn").style.display = bankerTurn ? "none" : "block";
-  $("closeBankBtn").style.display = bankerTurn ? "block" : "none";
+  $("bankChips").innerHTML = chipCount
+    ? Array.from({ length: chipCount }, (_, i) => `<span class="chip-token chip-${i % 4}" style="--chip-index:${i}" aria-hidden="true"></span>`).join("")
+    : '<span class="empty-bank">—</span>';
+  $("status").textContent = battleMessage || (roundEnded ? "دور بانکداری تمام شد" : (battleSettled ? "نتیجه ثبت شد" : (bankerTurn ? "نوبت بانکدار" : `نوبت ${players[activePlayer].name}`)));
+  $("standBtn").style.display = bankerTurn || battleSettled || roundEnded ? "none" : "block";
+  $("closeBankBtn").style.display = bankerTurn && !battleSettled && !roundEnded ? "block" : "none";
+  $("nextPlayerBtn").style.display = battleSettled && !roundEnded ? "block" : "none";
 
   $("seats").innerHTML = players.map((p, i) => `
     <div class="seat s${i} ${i === banker ? "banker" : ""} ${i === activePlayer && !bankerTurn ? "active" : ""}">
@@ -238,16 +245,18 @@ function render() {
       <div class="name">${p.name}</div>
       <div class="tag">${i === banker ? "بانکدار" : ""}</div>
       <div class="cards">${
-        i === banker ? cardsText(bankerHand) :
-        i === activePlayer ? cardsText(playerHand) :
-        cardBack()
+        i === banker
+          ? (bankerTurn ? cardsText(bankerHand) : hiddenCards(bankerHand.length))
+          : i === activePlayer
+            ? (bankerTurn ? hiddenCards(playerHand.length) : cardsText(playerHand))
+            : hiddenCards(p.hand.length)
       }</div>
       <div class="seat-balance">موجودی: ${money(p.balance)} تومان</div>
     </div>`).join("");
 
   $("handInfo").innerHTML = bankerTurn
-    ? `دست بانکدار: <strong>${cardsText(bankerHand)}</strong> — ${score(bankerHand)}`
-    : `دست بازیکن فعال: <strong>${cardsText(playerHand)}</strong> — ${score(playerHand)}`;
+    ? `دست شما (بانکدار): <strong>${cardsText(bankerHand)}</strong> — ${score(bankerHand)} <span class="privacy-note">دست بازیکن مخفی است</span>`
+    : `دست شما (بازیکن): <strong>${cardsText(playerHand)}</strong> — ${score(playerHand)} <span class="privacy-note">دست بانکدار مخفی است</span>`;
 
   renderChoices();
 }
@@ -381,11 +390,12 @@ function finishBattle(reason = "normal") {
     return;
   }
   render();
-  setTimeout(nextPlayer, 600);
+  // حرکت به نفر بعد فقط با فشردن دکمه توسط بانکدار/کاربر انجام می‌شود.
 }
 
 function nextPlayer() {
-  if (roundEnded) return;
+  if (roundEnded || !battleSettled) return;
+  $("nextPlayerBtn").style.display = "none";
   battleMessage = "";
   let next = (activePlayer + 1) % players.length;
   if (next === banker) next = (next + 1) % players.length;
@@ -580,6 +590,7 @@ function requestWithdraw() {
 $("standBtn").onclick = stand;
 $("closeBankBtn").onclick = () => { if (bankerTurn && !battleSettled && !roundEnded) finishBattle(); };
 $("nextRoundBtn").onclick = newBankRound;
+$("nextPlayerBtn").onclick = nextPlayer;
 $("closeModal").onclick = () => $("modal").classList.add("hidden");
 $("modal").addEventListener("click", e => {
   if (e.target === $("modal")) $("modal").classList.add("hidden");
