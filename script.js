@@ -3,13 +3,22 @@ const RULES = {
   tieGoesTo: "BANKER"
 };
 
+function cardRank(card) {
+  return String(card).slice(0, -1);
+}
+
+function cardSuit(card) {
+  return String(card).slice(-1);
+}
+
 function score(hand) {
-  return hand.reduce((s, c) => s + RULES.values[c], 0);
+  return hand.reduce((s, c) => s + RULES.values[cardRank(c)], 0);
 }
 
 function isSpecialWin(hand) {
-  if (hand.length === 2 && hand.filter(c => c === "A").length === 2) return true;
-  if (hand.length === 2 && hand.includes("A") && hand.includes("10")) return true;
+  const ranks = hand.map(cardRank);
+  if (hand.length === 2 && ranks.filter(c => c === "A").length === 2) return true;
+  if (hand.length === 2 && ranks.includes("A") && ranks.includes("10")) return true;
   if (hand.length === 5 && score(hand) === 21) return true;
   return false;
 }
@@ -50,10 +59,11 @@ function playCardSound() {
 // ===== Cards (Clear CSS-based) =====
 const suits = ["♠", "♥", "♦", "♣"];
 function cardVisual(c) {
-  const suit = suits[Math.floor(Math.random() * 4)]; // visual only
+  const rank = cardRank(c);
+  const suit = cardSuit(c);
   const isRed = suit === "♥" || suit === "♦";
-  return `<span class="playing-card ${isRed ? "red" : "black"}" title="${c}">
-    <span class="rank">${c}</span>
+  return `<span class="playing-card ${isRed ? "red" : "black"}" title="${rank}${suit}">
+    <span class="rank">${rank}</span>
     <span class="suit">${suit}</span>
   </span>`;
 }
@@ -70,8 +80,8 @@ function hiddenCards(count) {
 // ===== Deck =====
 const fullDeck = () => {
   const a = [];
-  for (let s = 0; s < 4; s++)
-    for (const c of ["6", "7", "8", "9", "10", "J", "Q", "K", "A"]) a.push(c);
+  for (let s = 0; s < suits.length; s++)
+    for (const c of ["6", "7", "8", "9", "10", "J", "Q", "K", "A"]) a.push(`${c}${suits[s]}`);
   return a;
 };
 function shuffle() {
@@ -163,7 +173,7 @@ function dealAskechi(index) {
     const c = draw();
     players[index].hand.push(c);
     renderAskechi(index);
-    if (c === "A") {
+    if (cardRank(c) === "A") {
       banker = index;
       players[banker].balance -= tables[currentTable] * 3;
       dealTimer = setTimeout(() => {
