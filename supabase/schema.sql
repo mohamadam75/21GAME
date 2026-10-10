@@ -107,8 +107,7 @@ $$;
 drop policy if exists "profiles read signed-in profiles" on public.profiles;
 create policy "profiles read signed-in profiles" on public.profiles for select to authenticated using (true);
 drop policy if exists "profile update self limited" on public.profiles;
-create policy "profile update self limited" on public.profiles for update to authenticated
-using (id = auth.uid()) with check (id = auth.uid() and role = (select p.role from public.profiles p where p.id = auth.uid()) and demo_chips = (select p.demo_chips from public.profiles p where p.id = auth.uid()));
+-- Profile role and chip balances are server/admin managed; clients cannot update them directly.
 
 drop policy if exists "tables visible" on public.game_tables;
 create policy "tables visible" on public.game_tables for select to authenticated using (true);
@@ -156,6 +155,65 @@ $$;
 drop trigger if exists on_auth_user_created_21game on auth.users;
 create trigger on_auth_user_created_21game after insert on auth.users
 for each row execute procedure public.handle_new_user();
+
+-- Secure admin review of manual chip requests. These are demo chips only, not cash payments.
+create or replace function public.admin_review_wallet_request(
+  p_request_id uuid,
+  p_approve boolean,
+  p_note text default ''
+)
+returns public.wallet_requests
+language plpgsql
+security definer
+set search_path = public
+as $
+declare
+  req public.wallet_requests;
+  current_chips bigint;
+begin
+  if not public.is_admin() then
+    raise exception 'admin_only';
+  end if;
+
+  select * into req
+  from public.wallet_requests
+  where id = p_request_id
+  for update;
+
+  if not found then raise exception 'request_not_found'; end if;
+  if req.status <> 'pending' then raise exception 'request_already_reviewed'; end if;
+
+  if p_approve then
+    select demo_chips into current_chips from public.profiles where id = req.user_id for update;
+    if req.request_type = 'withdrawal' and current_chips < req.amount then
+      raise exception 'insufficient_demo_chips';
+    end if;
+
+    if req.request_type = 'chip_topup' then
+      update public.profiles set demo_chips = demo_chips + req.amount where id = req.user_id;
+      insert into public.wallet_ledger(user_id, amount, entry_type, reference_id, note, created_by)
+      values(req.user_id, req.amount, 'admin_credit', req.id, coalesce(p_note,'تأیید شارژ ژتون آزمایشی'), auth.uid());
+    else
+      update public.profiles set demo_chips = demo_chips - req.amount where id = req.user_id;
+      insert into public.wallet_ledger(user_id, amount, entry_type, reference_id, note, created_by)
+      values(req.user_id, -req.amount, 'admin_debit', req.id, coalesce(p_note,'تأیید درخواست برداشت ژتون آزمایشی'), auth.uid());
+    end if;
+  end if;
+
+  update public.wallet_requests
+  set status = case when p_approve then 'approved' else 'rejected' end,
+      admin_note = coalesce(p_note,''),
+      reviewed_by = auth.uid(),
+      reviewed_at = now()
+  where id = p_request_id
+  returning * into req;
+
+  return req;
+end;
+$;
+
+revoke all on function public.admin_review_wallet_request(uuid,boolean,text) from public;
+grant execute on function public.admin_review_wallet_request(uuid,boolean,text) to authenticated;
 
 -- Realtime: safe public tables only. Do NOT publish table_private_state or wallet_ledger.
 do $$
