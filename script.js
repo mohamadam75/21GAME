@@ -22,6 +22,7 @@ let battleMessage = "";
 let roundEnded = false;
 let pendingBankerFunding = false;
 let playersHandledThisBankRound = 0;
+let bankRoundNeedsEnd = false;
 
 const names = ["بازیکن ۱", "بازیکن ۲", "بازیکن ۳", "بازیکن ۴", "بازیکن ۵", "بازیکن ۶"];
 const $ = id => document.getElementById(id);
@@ -193,6 +194,7 @@ function startBankingRound() {
   battleSettled = false;
   bankerDrewThisHand = false;
   playersHandledThisBankRound = 0;
+  bankRoundNeedsEnd = false;
   activePlayer = (banker + 1) % players.length;
 
   for (let i = 0; i < players.length; i++) {
@@ -397,11 +399,8 @@ function finishBattle(reason = "normal") {
   players[activePlayer].hand = [...playerHand];
   playersHandledThisBankRound++;
 
-  if (bank <= 0 || bank >= base * 9) {
-    endBankRound();
-    render();
-    return;
-  }
+  // Keep both hands visible until the banker presses the next-player button.
+  bankRoundNeedsEnd = bank <= 0 || bank >= base * 9;
   render();
   // حرکت به نفر بعد فقط با فشردن دکمه توسط بانکدار/کاربر انجام می‌شود.
 }
@@ -409,6 +408,12 @@ function finishBattle(reason = "normal") {
 function nextPlayer() {
   if (roundEnded || !battleSettled) return;
   $("nextPlayerBtn").style.display = "none";
+  if (bankRoundNeedsEnd) {
+    bankRoundNeedsEnd = false;
+    endBankRound();
+    render();
+    return;
+  }
   if (playersHandledThisBankRound >= players.length - 1) {
     endBankRound();
     render();
