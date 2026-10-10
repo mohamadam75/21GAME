@@ -371,9 +371,7 @@ function finishBattle(reason = "normal") {
   if (bankerDrewThisHand) bankerHand = [];
 
   if (bank <= 0 || bank >= base * 9) {
-    roundEnded = true;
-    $("cardChoices").innerHTML = "";
-    $("nextRoundBtn").style.display = "none";
+    endBankRound();
     render();
     return;
   }
