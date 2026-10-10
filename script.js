@@ -228,6 +228,8 @@ function render() {
   const chipCount = Math.max(0, Math.min(12, Math.round(bank / base)));
   $("bankChips").textContent = "🪙".repeat(chipCount) || "—";
   $("status").textContent = battleMessage || (roundEnded ? "دور بانکداری تمام شد" : (bankerTurn ? "نوبت بانکدار" : `نوبت ${players[activePlayer].name}`));
+  $("standBtn").style.display = bankerTurn ? "none" : "block";
+  $("closeBankBtn").style.display = bankerTurn ? "block" : "none";
 
   $("seats").innerHTML = players.map((p, i) => `
     <div class="seat s${i} ${i === banker ? "banker" : ""} ${i === activePlayer && !bankerTurn ? "active" : ""}">
@@ -253,16 +255,14 @@ function renderChoices() {
   const box = $("cardChoices");
   box.innerHTML = "";
   if (bankerTurn) {
-    // Banker auto-plays with simple AI to prevent hang
-    setTimeout(() => {
-      if (!bankerTurn || battleSettled) return;
-      const bs = score(bankerHand);
-      if (bs < 17) {
-        bankDraw();
-      } else {
-        finishBattle();
-      }
-    }, 700);
+    const takeCard = document.createElement("button");
+    takeCard.textContent = "کارت بانکدار";
+    takeCard.onclick = bankDraw;
+    box.appendChild(takeCard);
+    const closeHand = document.createElement("button");
+    closeHand.textContent = "بسته";
+    closeHand.onclick = () => finishBattle();
+    box.appendChild(closeHand);
     return;
   }
   for (let n = 1; n <= 4; n++) {
@@ -324,9 +324,11 @@ function bankDraw() {
   bankerHand.push(draw());
   bankerDrewThisHand = true;
   render();
-  if (score(bankerHand) > 21 || score(bankerHand) >= 17) {
+  if (score(bankerHand) > 21 || score(bankerHand) >= 20) {
     finishBattle();
+    return;
   }
+  render();
 }
 
 function finishBattle(reason = "normal") {
@@ -575,6 +577,7 @@ function requestWithdraw() {
 
 // ===== Events =====
 $("standBtn").onclick = stand;
+$("closeBankBtn").onclick = () => { if (bankerTurn && !battleSettled && !roundEnded) finishBattle(); };
 $("nextRoundBtn").onclick = newBankRound;
 $("closeModal").onclick = () => $("modal").classList.add("hidden");
 $("modal").addEventListener("click", e => {
