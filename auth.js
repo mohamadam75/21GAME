@@ -147,6 +147,7 @@
     const isMyTurn=!!game&&!gameError&&game.status==="playing"&&game.active_user_id===me;
     scheduleTurnAutoAction(tableId,gameError?null:game,me,isMyTurn);
     $("startGameBtn").classList.toggle("hidden",!!game&&!gameError&&game.status==="playing");
+    $("startGameBtn").textContent=game?.status==="settled"&&game?.banker_user_id&&Number(game?.bank_amount||0)>0&&Number(game?.banker_hands_played||0)<3&&Number(game?.bank_amount||0)<Number(stakes[tableIndex])*9?"ادامه بانکداری":"شروع دست / آس‌کشی";
     $("startGameBtn").disabled=seats.length<2;
     $("drawCardBtn").classList.toggle("hidden",!isMyTurn);
     $("standBtn").style.display=isMyTurn&&!game?.is_banker?"inline-block":"none";
