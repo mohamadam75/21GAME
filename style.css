@@ -411,3 +411,17 @@ button{
 .user-row{padding:12px;margin:8px 0;border:1px solid #30415b;border-radius:10px;background:#111c2d}
 .user-row small{display:block;color:#a9bad1}
 .chat-msg{overflow-wrap:anywhere}
+
+/* Wider table and seats moved outward to the table corners */
+.poker-table{height:590px;max-width:1040px;width:100%;margin:24px auto 34px}
+.table-inner{inset:76px 150px}
+.seat{width:146px;z-index:2}
+.s0{top:-52px;left:calc(50% - 73px)}
+.s1{top:13%;right:-78px}
+.s2{bottom:-38px;right:9%}
+.s3{bottom:-52px;left:calc(50% - 73px)}
+.s4{bottom:-38px;left:9%}
+.s5{top:13%;left:-78px}
+.seat-balance{display:block;font-size:11px;color:#e5d7a2;font-weight:700;margin-top:4px;white-space:nowrap}
+.payment-proof-preview{display:block;max-width:240px;max-height:220px;object-fit:contain;border:1px solid #50617b;border-radius:8px;margin:8px 0}
+@media(max-width:700px){.poker-table{height:490px;margin-top:28px}.table-inner{inset:66px 50px}.s1{right:-44px}.s5{left:-44px}.s2{right:0;bottom:-38px}.s4{left:0;bottom:-38px}.seat{width:112px}.seat .name{font-size:11px}.seat-balance{font-size:9px}.s0,.s3{left:calc(50% - 56px)}}
