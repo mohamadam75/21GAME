@@ -243,7 +243,8 @@
   async function sendGameAction(action){
     const client=window.supabase21Game;if(!client||!seatedTable)return;
     const {data,error}=await client.rpc("game_action",{p_table_id:seatedTable,p_action:action});
-    if(error){alert("خطای بازی: "+error.message);return;}\n    if(action==="start")await refreshProfile();
+    if(error){alert("خطای بازی: "+error.message);return;}
+    await refreshProfile();
     await renderLobby(seatedTable-1);if(data?.message)$("status").textContent=data.message;
     if(action==="pause")$("modal").classList.add("hidden");
   }
