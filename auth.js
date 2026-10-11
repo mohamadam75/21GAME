@@ -14,100 +14,195 @@
   window.open21GameAccountModal=(title,body)=>{$("accountTitle").textContent=title;$("accountBody").innerHTML=body;$("accountModal").classList.remove("hidden");};
   window.addEventListener("DOMContentLoaded",()=>{$("authForm").addEventListener("submit",submitAuth);$("authModeToggle").addEventListener("click",()=>setMode(!isSignup));$("signOutBtn").addEventListener("click",async()=>{if(client)await client.auth.signOut();profile=null;window.current21GameUser=null;$("signedInName").textContent="مهمان";$("signOutBtn").classList.add("hidden");$("adminPanelBtn").classList.add("hidden");setWallet(0);$("authGate").classList.remove("auth-hidden");setMode(false);});$("chipRequestBtn").addEventListener("click",()=>requestForm("chip_topup"));$("withdrawBtn").addEventListener("click",()=>requestForm("withdrawal"));$("adminPanelBtn").addEventListener("click",adminPanel);$("balanceBtn").addEventListener("click",()=>requestForm("chip_topup"));init();});
 })();
-/* Live seating lobby: shared seats are synchronized through Supabase Realtime. Card actions remain disabled until the trusted game function is deployed. */
+/* Live lobby, private hand display, shared chat and WebRTC voice. */
 (function(){
   const $=id=>document.getElementById(id);
-  let channel=null, seatedTable=null;
+  let channel=null, chatChannel=null, voiceChannel=null, seatedTable=null;
+  let voiceEnabled=false, localStream=null;
+  const peers=new Map(), audioEls=new Map();
   const stakes=[20000,30000,40000,50000,50000,60000,70000,80000,90000,100000];
   function cash(n){return Number(n||0).toLocaleString("fa-IR");}
+  function escapeHtml(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");}
+  function cardHtml(card,small=false){
+    if(!card)return "";
+    const red=["♥","♦"].includes(card.suit);
+    return '<span class="playing-card '+(red?"red":"black")+(small?" mini":"")+'"><span class="rank">'+escapeHtml(card.rank)+'</span><span class="suit">'+escapeHtml(card.suit)+'</span></span>';
+  }
   async function refreshOccupancy(){
-    const client=window.supabase21Game;
-    if(!client)return;
-    const {data,error}=await client.from("table_seats").select("table_id");
-    if(error)return;
+    const client=window.supabase21Game;if(!client)return;
+    const {data,error}=await client.from("table_seats").select("table_id");if(error)return;
     const counts=Array(10).fill(0);
     (data||[]).forEach(row=>{const i=Number(row.table_id)-1;if(i>=0&&i<counts.length)counts[i]++;});
     counts.forEach((n,i)=>{const el=$("onlineCount"+i);if(el)el.textContent="آنلاین: "+cash(n)+" نفر";});
   }
   async function renderLobby(tableIndex){
-    const client=window.supabase21Game;
-    const tableId=tableIndex+1;
+    const client=window.supabase21Game, tableId=tableIndex+1;
     const {data,error}=await client.from("table_seats").select("seat_no,user_id,profiles(username,display_name)").eq("table_id",tableId).order("seat_no");
     if(error)throw error;
     const seats=data||[];
+    const {data:game,error:gameError}=await client.rpc("game_my_hand",{p_table_id:tableId});
+    const me=window.current21GameUser?.id;
+    const askechi=(!gameError&&Array.isArray(game?.askechi_cards))?game.askechi_cards:[];
     $("seats").innerHTML=Array.from({length:6},(_,i)=>{
       const p=seats.find(s=>s.seat_no===i+1);
-      const name=p?(p.profiles?.display_name||p.profiles?.username||"بازیکن"):"صندلی خالی";
-      const isMe=p&&p.user_id===window.current21GameUser?.id;
-      return '<div class="seat s'+i+' '+(isMe?"active":"")+'"><div class="avatar">'+(p?"👤":"＋")+'</div><div class="name">'+name.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")+'</div><div class="tag">'+(isMe?"شما":p?"بازیکن":"")+'</div><div class="cards">'+(p?"● ● ●":"")+'</div></div>';
+      if(!p)return '<div class="seat s'+i+'"><div class="avatar">＋</div><div class="name">صندلی خالی</div><div class="tag"></div><div class="cards"></div></div>';
+      const isMe=p.user_id===me, isBanker=!gameError&&game?.banker_user_id===p.user_id;
+      const isActive=!gameError&&game?.active_user_id===p.user_id;
+      const name=escapeHtml(p.profiles?.display_name||p.profiles?.username||"بازیکن");
+      const initialCards=askechi.filter(x=>x.user_id===p.user_id).map(x=>cardHtml(x.card,true)).join("");
+      const privateCards=isMe&&!gameError?(game?.my_hand||[]).map(x=>cardHtml(x,true)).join(""):"";
+      const shownCards=initialCards || privateCards || (game?.status==="playing"&&!isMe?'<span class="card-back playing-card"></span>':"");
+      return '<div class="seat s'+i+' '+(isMe?"active ":"")+(isBanker?"banker ":"")+(isActive?"turn-active":"")+'"><div class="avatar">'+(isBanker?"👑":"👤")+'</div><div class="name">'+name+'</div><div class="tag">'+(isBanker?"بانکدار":isMe?"شما":isActive?"نوبت بازی":"بازیکن")+'</div><div class="cards">'+shownCards+'</div></div>';
     }).join("");
-    const {data:game,error:gameError}=await client.rpc("game_my_hand",{p_table_id:tableId});
-    const statusText=gameError?"موتور بازی هنوز نصب نشده است؛ مدیر باید فایل supabase/game_engine.sql را در SQL Editor اجرا کند.":(game?.message||"در انتظار شروع بازی");
+    const statusText=gameError?"خطای دریافت وضعیت بازی: "+gameError.message:(game?.message||"در انتظار شروع بازی");
     $("status").textContent=statusText;
-    $("handInfo").textContent=gameError?"برای پخش کارت، ابتدا نصب موتور بازی در Supabase لازم است.":("کارت‌های شما: "+(game?.my_hand||[]).map(c=>c.rank+c.suit).join("  ")+" · امتیاز: "+(game?.my_score||0));
+    $("handInfo").innerHTML=gameError?"وضعیت کارت‌ها دریافت نشد.":("کارت‌های شما: "+((game?.my_hand||[]).map(cardHtml).join(" ")||"—")+" · امتیاز: "+(game?.my_score||0));
     $("cardChoices").innerHTML="";
-    $("bankAmount").textContent=cash(game?.bank_amount||stakes[tableIndex]*3);
-    $("bankChips").innerHTML='<span class="empty-bank">'+(game?.status==="playing"?"بانک بازی":"لابی آنلاین")+'</span>';
+    $("bankAmount").textContent=cash(game?.bank_amount??stakes[tableIndex]*3);
+    const chipCount=Math.max(0,Math.min(12,Math.round(Number(game?.bank_amount||0)/stakes[tableIndex])));
+    $("bankChips").innerHTML=chipCount?Array.from({length:chipCount},(_,i)=>'<span class="chip-token chip-'+(i%4)+'" style="--chip-index:'+i+'"></span>').join(""):'<span class="empty-bank">بانک بازی</span>';
     $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableIndex])+" ژتون آزمایشی · ظرفیت ۶ نفر · "+seats.length+" بازیکن حاضر";
-    const me=window.current21GameUser?.id;
     const isMyTurn=!!game&&!gameError&&game.status==="playing"&&game.active_user_id===me;
     $("startGameBtn").classList.toggle("hidden",!!game&&!gameError&&game.status==="playing");
     $("startGameBtn").disabled=seats.length<2;
     $("drawCardBtn").classList.toggle("hidden",!isMyTurn);
-    $("standBtn").style.display=isMyTurn?"inline-block":"none";
+    $("standBtn").style.display=isMyTurn&&!game?.is_banker?"inline-block":"none";
     $("closeBankBtn").style.display=isMyTurn&&game?.is_banker?"inline-block":"none";
-    $("nextPlayerBtn").style.display="none";
-    $("nextRoundBtn").style.display="none";
+    $("nextPlayerBtn").style.display="none";$("nextRoundBtn").style.display="none";
+  }
+  async function loadChat(){
+    const client=window.supabase21Game;if(!client||!seatedTable)return;
+    const {data,error}=await client.from("table_chat").select("id,user_id,message,created_at").eq("table_id",seatedTable).order("created_at",{ascending:true}).limit(100);
+    if(error){$("chatMessages").textContent="پیام‌ها بارگذاری نشد: "+error.message;return;}
+    const ids=[...new Set((data||[]).map(x=>x.user_id))];
+    let profiles=[];
+    if(ids.length){const p=await client.from("profiles").select("id,username,display_name").in("id",ids);profiles=p.data||[];}
+    const names=Object.fromEntries(profiles.map(p=>[p.id,p.display_name||p.username||"بازیکن"]));
+    const box=$("chatMessages");box.innerHTML="";
+    (data||[]).forEach(row=>{const el=document.createElement("div");el.className="chat-msg";el.textContent=(names[row.user_id]||"بازیکن")+": "+row.message;box.appendChild(el);});
+    box.scrollTop=box.scrollHeight;
+  }
+  async function sendChat(){
+    const client=window.supabase21Game,user=window.current21GameUser,input=$("chatInput"),message=input.value.trim();
+    if(!client||!user||!seatedTable){alert("برای ارسال پیام باید وارد میز شوید.");return;}
+    if(!message)return;
+    const {error}=await client.from("table_chat").insert({table_id:seatedTable,user_id:user.id,message:message.slice(0,500)});
+    if(error){alert("ارسال پیام انجام نشد: "+error.message);return;}
+    input.value="";await loadChat();
+  }
+  async function sendVoiceSignal(to,payload){
+    if(!voiceChannel)return;
+    return voiceChannel.send({type:"broadcast",event:"signal",payload:{from:window.current21GameUser.id,to,...payload}});
+  }
+  function closePeer(id){
+    const pc=peers.get(id);if(pc){pc.onicecandidate=null;pc.ontrack=null;pc.close();peers.delete(id);}
+    const audio=audioEls.get(id);if(audio){audio.srcObject=null;audio.remove();audioEls.delete(id);}
+  }
+  async function makePeer(id,offerer){
+    if(peers.has(id))return peers.get(id);
+    const pc=new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
+    peers.set(id,pc);
+    if(localStream)localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
+    pc.onicecandidate=e=>{if(e.candidate)sendVoiceSignal(id,{kind:"candidate",candidate:e.candidate});};
+    pc.ontrack=e=>{
+      let audio=audioEls.get(id);
+      if(!audio){audio=document.createElement("audio");audio.autoplay=true;audio.playsInline=true;audio.style.display="none";$("chatPanel").appendChild(audio);audioEls.set(id,audio);}
+      audio.srcObject=e.streams[0];audio.play().catch(()=>{});
+    };
+    pc.onconnectionstatechange=()=>{if(["failed","closed"].includes(pc.connectionState))closePeer(id);};
+    if(offerer){const offer=await pc.createOffer();await pc.setLocalDescription(offer);await sendVoiceSignal(id,{kind:"offer",sdp:pc.localDescription});}
+    return pc;
+  }
+  async function handleVoiceSignal(payload){
+    const me=window.current21GameUser?.id;if(!payload||payload.to!==me||payload.from===me)return;
+    const from=payload.from;
+    try{
+      if(payload.kind==="hello"){
+        if(voiceEnabled&&me>from)await makePeer(from,true);
+      }else if(payload.kind==="offer"&&voiceEnabled){
+        const pc=await makePeer(from,false);await pc.setRemoteDescription(payload.sdp);
+        const answer=await pc.createAnswer();await pc.setLocalDescription(answer);
+        await sendVoiceSignal(from,{kind:"answer",sdp:pc.localDescription});
+      }else if(payload.kind==="answer"&&peers.has(from)){
+        await peers.get(from).setRemoteDescription(payload.sdp);
+      }else if(payload.kind==="candidate"&&peers.has(from)&&payload.candidate){
+        await peers.get(from).addIceCandidate(payload.candidate);
+      }else if(payload.kind==="bye"){closePeer(from);}
+    }catch(e){console.warn("voice signaling:",e);}
+  }
+  async function toggleVoice(){
+    if(voiceEnabled){
+      voiceEnabled=false;
+      for(const id of peers.keys())sendVoiceSignal(id,{kind:"bye"});
+      [...peers.keys()].forEach(closePeer);
+      if(localStream)localStream.getTracks().forEach(t=>t.stop());
+      localStream=null;$("voiceBtn").classList.remove("active");$("voiceBtn").textContent="🎙 وویس";
+      $("voiceNote").textContent="وویس خاموش است.";return;
+    }
+    if(!seatedTable){alert("ابتدا وارد یک میز شوید.");return;}
+    if(!navigator.mediaDevices?.getUserMedia||!window.RTCPeerConnection){alert("مرورگر شما تماس صوتی را پشتیبانی نمی‌کند.");return;}
+    try{
+      localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});voiceEnabled=true;
+      $("voiceBtn").classList.add("active");$("voiceBtn").textContent="🎙 قطع وویس";
+      $("voiceNote").textContent="میکروفون فعال است؛ برای صدای دیگران اجازهٔ پخش صدا را بدهید.";
+      const {data}=await window.supabase21Game.from("table_seats").select("user_id").eq("table_id",seatedTable);
+      for(const row of data||[])if(row.user_id!==window.current21GameUser.id)await sendVoiceSignal(row.user_id,{kind:"hello"});
+    }catch(e){voiceEnabled=false;if(localStream)localStream.getTracks().forEach(t=>t.stop());localStream=null;alert("فعال‌سازی میکروفون انجام نشد: "+e.message);}
+  }
+  async function setupTableChannels(tableId,i){
+    const client=window.supabase21Game;
+    if(channel)await client.removeChannel(channel);
+    if(chatChannel)await client.removeChannel(chatChannel);
+    if(voiceChannel)await client.removeChannel(voiceChannel);
+    channel=client.channel("table-seats-"+tableId)
+      .on("postgres_changes",{event:"*",schema:"public",table:"table_seats",filter:"table_id=eq."+tableId},()=>{renderLobby(i).catch(console.error);refreshOccupancy();})
+      .on("postgres_changes",{event:"*",schema:"public",table:"table_public_state",filter:"table_id=eq."+tableId},()=>renderLobby(i).catch(console.error))
+      .subscribe();
+    chatChannel=client.channel("table-chat-"+tableId)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"table_chat",filter:"table_id=eq."+tableId},loadChat).subscribe();
+    voiceChannel=client.channel("voice-table-"+tableId)
+      .on("broadcast",{event:"signal"},({payload})=>handleVoiceSignal(payload)).subscribe();
+    await loadChat();
   }
   async function joinOnlineTable(i){
-    const client=window.supabase21Game, user=window.current21GameUser;
+    const client=window.supabase21Game,user=window.current21GameUser;
     if(!client||!user){alert("برای ورود به میز ابتدا وارد حساب شوید.");return;}
     const stake=stakes[i];
     if(Number(user.demo_chips||0)<stake*4){alert("برای این میز حداقل "+cash(stake*4)+" ژتون آزمایشی لازم است. از منو درخواست شارژ ژتون بدهید.");return;}
     try{
       const {data:existing,error:existingErr}=await client.from("table_seats").select("table_id,seat_no").eq("user_id",user.id);
       if(existingErr)throw existingErr;
-      if(existing?.length && existing[0].table_id!==i+1){alert("شما هم‌اکنون روی میز دیگری نشسته‌اید. ابتدا آن میز را ترک کنید.");return;}
+      if(existing?.length&&existing[0].table_id!==i+1){alert("شما هم‌اکنون روی میز دیگری نشسته‌اید. ابتدا آن میز را ترک کنید.");return;}
       if(!existing?.length){
         const {data:occupied,error}=await client.from("table_seats").select("seat_no").eq("table_id",i+1);
-        if(error)throw error;
-        const used=new Set((occupied||[]).map(x=>x.seat_no));
+        if(error)throw error;const used=new Set((occupied||[]).map(x=>x.seat_no));
         let seatNo=1;while(used.has(seatNo)&&seatNo<=6)seatNo++;
         if(seatNo>6){alert("این میز پر است. میز دیگری انتخاب کنید.");return;}
         const {error:insertErr}=await client.from("table_seats").insert({table_id:i+1,user_id:user.id,seat_no:seatNo});
         if(insertErr)throw insertErr;
       }
       seatedTable=i+1;
-      if(channel){await client.removeChannel(channel);channel=null;}
-      channel=client.channel("table-seats-"+seatedTable)
-        .on("postgres_changes",{event:"*",schema:"public",table:"table_seats",filter:"table_id=eq."+seatedTable},()=>renderLobby(i).catch(console.error))
-        .on("postgres_changes",{event:"*",schema:"public",table:"table_public_state",filter:"table_id=eq."+seatedTable},()=>renderLobby(i).catch(console.error))
-        .subscribe();
-      $("modalTitle").textContent="میز "+(i+1);
-      $("modal").classList.remove("hidden");
-      $("leaveOnlineTable").classList.remove("hidden");
-      $("pauseOnlineTable").classList.remove("hidden");
-      await renderLobby(i);
+      $("modalTitle").textContent="میز "+(i+1);$("modal").classList.remove("hidden");
+      $("leaveOnlineTable").classList.remove("hidden");$("pauseOnlineTable").classList.remove("hidden");
+      await setupTableChannels(seatedTable,i);await renderLobby(i);
     }catch(e){alert("ورود به میز انجام نشد: "+(e.message||e));}
   }
   async function sendGameAction(action){
-    const client=window.supabase21Game;
-    if(!client||!seatedTable)return;
+    const client=window.supabase21Game;if(!client||!seatedTable)return;
     const {data,error}=await client.rpc("game_action",{p_table_id:seatedTable,p_action:action});
     if(error){alert("خطای بازی: "+error.message);return;}
-    const i=seatedTable-1;
-    await renderLobby(i);
-    if(data?.message)$("status").textContent=data.message;
+    await renderLobby(seatedTable-1);if(data?.message)$("status").textContent=data.message;
     if(action==="pause")$("modal").classList.add("hidden");
   }
   async function leaveOnlineTable(){
-    const client=window.supabase21Game,user=window.current21GameUser;
-    if(!client||!user||!seatedTable)return;
+    const client=window.supabase21Game,user=window.current21GameUser;if(!client||!user||!seatedTable)return;
     const tableId=seatedTable;
+    if(voiceEnabled)await toggleVoice();
     const {error}=await client.from("table_seats").delete().eq("table_id",tableId).eq("user_id",user.id);
     if(error){alert("ترک میز انجام نشد: "+error.message);return;}
-    if(channel){await client.removeChannel(channel);channel=null;}
-    seatedTable=null;$("leaveOnlineTable").classList.add("hidden");$("pauseOnlineTable").classList.add("hidden");$("modal").classList.add("hidden");
+    for(const ch of [channel,chatChannel,voiceChannel])if(ch)await client.removeChannel(ch);
+    channel=null;chatChannel=null;voiceChannel=null;seatedTable=null;
+    $("leaveOnlineTable").classList.add("hidden");$("pauseOnlineTable").classList.add("hidden");$("modal").classList.add("hidden");
   }
   window.addEventListener("DOMContentLoaded",()=>{
     window.joinTable=joinOnlineTable;
@@ -116,10 +211,15 @@
     $("drawCardBtn").addEventListener("click",()=>sendGameAction("draw"));
     $("standBtn").addEventListener("click",()=>sendGameAction("stand"));
     $("closeBankBtn").addEventListener("click",()=>sendGameAction("close"));
-    $("pauseOnlineTable").addEventListener("click",()=>sendGameAction("pause").then(()=>$("modal").classList.add("hidden")));
+    $("pauseOnlineTable").textContent="خروج موقت";
+    $("pauseOnlineTable").addEventListener("click",()=>sendGameAction("pause"));
+    $("chatBtn").onclick=()=>{$("chatPanel").classList.toggle("hidden");if(!$("chatPanel").classList.contains("hidden"))loadChat();};
+    $("sendChat").onclick=sendChat;
+    $("chatInput").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();sendChat();}});
+    $("voiceBtn").onclick=toggleVoice;
     window.addEventListener("21game:authenticated",refreshOccupancy);
-    const lobbyClient=window.supabase21Game;
-    if(lobbyClient){refreshOccupancy();lobbyClient.channel("lobby-occupancy").on("postgres_changes",{event:"*",schema:"public",table:"table_seats"},refreshOccupancy).subscribe();}
+    const client=window.supabase21Game;
+    if(client){refreshOccupancy();client.channel("lobby-occupancy").on("postgres_changes",{event:"*",schema:"public",table:"table_seats"},refreshOccupancy).subscribe();}
     $("closeModal").addEventListener("click",()=>{if(seatedTable)$("modal").classList.add("hidden");});
   });
 })();
