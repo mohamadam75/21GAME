@@ -30,7 +30,8 @@
   <button id="balanceBtn" class="menu-item">💰 موجودی و شارژ حساب</button>
   <button id="withdrawBtn" class="menu-item">💸 درخواست برداشت ژتون</button>
   <button id="chipRequestBtn" class="menu-item">🪙 درخواست شارژ ژتون</button>
-  <button id="adminPanelBtn" class="menu-item hidden">🛠 پنل مدیریت</button>
+  <button id="profileSettingsBtn" class="menu-item">👤 تنظیمات حساب</button>
+  <button id="adminPanelBtn" class="menu-item hidden">🛠 تنظیمات مدیریت</button>
 </aside>
 <div id="menuOverlay" class="menu-overlay"></div>
 
@@ -102,7 +103,7 @@
     <div class="social-tools">
       <button id="soundToggle" class="social-btn" title="صدای کشیدن کارت">🔊 صدای کارت روشن</button>
       <button id="voiceBtn" class="social-btn">🎙 وویس</button>
-      <button id="chatBtn" class="social-btn">💬 پیام‌ها</button>
+      <button id="chatBtn" class="social-btn">💬 پیام‌ها <span id="chatUnreadDot" class="unread-dot hidden"></span></button>
     </div>
 
     <div id="chatPanel" class="chat-panel hidden">
@@ -137,7 +138,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-config.js"></script>
-<script src="auth.js?v=6"></script>
+<script src="auth.js?v=7"></script>
 <script src="script.js"></script>
 </body>
 </html>
