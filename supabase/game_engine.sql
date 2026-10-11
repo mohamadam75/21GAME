@@ -118,9 +118,18 @@ begin
       where table_id=p_table_id;
   elsif p_action='pause' then
     gs:=coalesce(priv.game_state,'{}'::jsonb);
+    if ps.status='playing' and ps.active_user_id=uid and ps.banker_user_id=uid then
+      raise exception 'banker_must_finish_turn_before_pause';
+    end if;
     gs:=jsonb_set(gs,'{paused_users}',coalesce(gs->'paused_users','[]'::jsonb)||jsonb_build_array(uid),true);
+    if ps.status='playing' and ps.active_user_id=uid then
+      gs:=jsonb_set(gs,'{phase}','"banker_turn"'::jsonb,true);
+      gs:=jsonb_set(gs,'{banker_turn}','true'::jsonb,true);
+      update public.table_public_state set active_user_id=ps.banker_user_id,public_message='بازیکن موقتاً خارج شد و دست را بست؛ نوبت بانکدار',updated_at=now() where table_id=p_table_id;
+    else
+      update public.table_public_state set public_message='بازیکن موقتاً خارج شده؛ صندلی محفوظ است',updated_at=now() where table_id=p_table_id;
+    end if;
     update public.table_private_state set game_state=gs,updated_at=now() where table_id=p_table_id;
-    update public.table_public_state set public_message='بازیکن موقتاً خارج شده؛ صندلی محفوظ است',updated_at=now() where table_id=p_table_id;
   elsif p_action='resume' then
     gs:=coalesce(priv.game_state,'{}'::jsonb);
     select coalesce(jsonb_agg(p.value),'[]'::jsonb) into deck from jsonb_array_elements(coalesce(gs->'paused_users','[]'::jsonb)) as p(value) where p.value#>>'{}'<>uid::text;
