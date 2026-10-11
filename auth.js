@@ -66,7 +66,7 @@
   let voiceEnabled=false, localStream=null, shownAskechiRound=null, askechiVisibleUntil=0;
   const peers=new Map(), audioEls=new Map();
   let stakes=[20000,30000,40000,50000,50000,60000,70000,80000,90000,100000];
-  let tableStatuses=Array(10).fill("waiting");
+  let tableStatuses=Array(10).fill("waiting"),tableCapacities=Array(10).fill(6);
   function cash(n){return Number(n||0).toLocaleString("fa-IR");}
   function escapeHtml(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");}
   function cardHtml(card,small=false){
@@ -76,7 +76,9 @@
   }
   async function refreshOccupancy(){
     const client=window.supabase21Game;if(!client)return;
-    const {data,error}=await client.from("table_seats").select("table_id");if(error)return;
+    const [seatResult,tableResult]=await Promise.all([client.from("table_seats").select("table_id"),client.from("game_tables").select("id,stake,capacity,status").order("id")]);
+    const data=seatResult.data,error=seatResult.error;if(error)return;
+    if(tableResult.data?.length){stakes=Array(10).fill(0);tableStatuses=Array(10).fill("waiting");tableCapacities=Array(10).fill(6);tableResult.data.forEach(t=>{stakes[t.id-1]=Number(t.stake);tableStatuses[t.id-1]=t.status;tableCapacities[t.id-1]=Number(t.capacity);});window.update21GameTables?.(tableResult.data);}
     const counts=Array(10).fill(0);
     (data||[]).forEach(row=>{const i=Number(row.table_id)-1;if(i>=0&&i<counts.length)counts[i]++;});
     counts.forEach((n,i)=>{const el=$("onlineCount"+i);if(el)el.textContent="آنلاین: "+cash(n)+" نفر";});
@@ -228,7 +230,7 @@
       if(existing?.length&&existing[0].table_id!==i+1){alert("شما هم‌اکنون روی میز دیگری نشسته‌اید. ابتدا آن میز را ترک کنید.");return;}
       if(!existing?.length){
         const {data:occupied,error}=await client.from("table_seats").select("seat_no").eq("table_id",i+1);
-        if(error)throw error;const used=new Set((occupied||[]).map(x=>x.seat_no));
+        if(error)throw error;if((occupied||[]).length>=tableCapacities[i]){alert("ظرفیت این میز تکمیل است.");return;}const used=new Set((occupied||[]).map(x=>x.seat_no));
         let seatNo=1;while(used.has(seatNo)&&seatNo<=6)seatNo++;
         if(seatNo>6){alert("این میز پر است. میز دیگری انتخاب کنید.");return;}
         const {error:insertErr}=await client.from("table_seats").insert({table_id:i+1,user_id:user.id,seat_no:seatNo});
