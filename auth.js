@@ -75,6 +75,7 @@
       $("modalTitle").textContent="میز "+(i+1);
       $("modal").classList.remove("hidden");
       $("leaveOnlineTable").classList.remove("hidden");
+      $("pauseOnlineTable").classList.remove("hidden");
       await renderLobby(i);
     }catch(e){alert("ورود به میز انجام نشد: "+(e.message||e));}
   }
@@ -85,11 +86,12 @@
     const {error}=await client.from("table_seats").delete().eq("table_id",tableId).eq("user_id",user.id);
     if(error){alert("ترک میز انجام نشد: "+error.message);return;}
     if(channel){await client.removeChannel(channel);channel=null;}
-    seatedTable=null;$("leaveOnlineTable").classList.add("hidden");$("modal").classList.add("hidden");
+    seatedTable=null;$("leaveOnlineTable").classList.add("hidden");$("pauseOnlineTable").classList.add("hidden");$("modal").classList.add("hidden");
   }
   window.addEventListener("DOMContentLoaded",()=>{
     window.joinTable=joinOnlineTable;
     $("leaveOnlineTable").addEventListener("click",leaveOnlineTable);
+    $("pauseOnlineTable").addEventListener("click",()=>{if(!seatedTable)return;$("modal").classList.add("hidden");alert("از میز فقط موقتاً خارج شدی؛ صندلیت رزرو می‌ماند. برای برگشت، همان میز را دوباره باز کن. توجه: ادامهٔ واقعی دست بازی پس از خروج موقت هنوز به موتور بازی سمت سرور نیاز دارد.");});
     window.addEventListener("21game:authenticated",refreshOccupancy);
     const lobbyClient=window.supabase21Game;
     if(lobbyClient){refreshOccupancy();lobbyClient.channel("lobby-occupancy").on("postgres_changes",{event:"*",schema:"public",table:"table_seats"},refreshOccupancy).subscribe();}
