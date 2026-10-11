@@ -20,6 +20,15 @@
   let channel=null, seatedTable=null;
   const stakes=[20000,30000,40000,50000,50000,60000,70000,80000,90000,100000];
   function cash(n){return Number(n||0).toLocaleString("fa-IR");}
+  async function refreshOccupancy(){
+    const client=window.supabase21Game;
+    if(!client)return;
+    const {data,error}=await client.from("table_seats").select("table_id");
+    if(error)return;
+    const counts=Array(10).fill(0);
+    (data||[]).forEach(row=>{const i=Number(row.table_id)-1;if(i>=0&&i<counts.length)counts[i]++;});
+    counts.forEach((n,i)=>{const el=$("onlineCount"+i);if(el)el.textContent="آنلاین: "+cash(n)+" نفر";});
+  }
   async function renderLobby(tableIndex){
     const client=window.supabase21Game;
     const tableId=tableIndex+1;
@@ -81,6 +90,9 @@
   window.addEventListener("DOMContentLoaded",()=>{
     window.joinTable=joinOnlineTable;
     $("leaveOnlineTable").addEventListener("click",leaveOnlineTable);
+    window.addEventListener("21game:authenticated",refreshOccupancy);
+    const lobbyClient=window.supabase21Game;
+    if(lobbyClient){refreshOccupancy();lobbyClient.channel("lobby-occupancy").on("postgres_changes",{event:"*",schema:"public",table:"table_seats"},refreshOccupancy).subscribe();}
     $("closeModal").addEventListener("click",()=>{if(seatedTable)leaveOnlineTable();});
   });
 })();
