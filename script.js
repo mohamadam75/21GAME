@@ -24,6 +24,7 @@ function isSpecialWin(hand) {
 }
 
 const tables = [20000, 30000, 40000, 50000, 50000, 60000, 70000, 80000, 90000, 100000];
+let tableOccupancy = Array(tables.length).fill(0);
 let wallet = 0, currentTable = null, bank = 0, banker = 0, bankRound = 1, players = [], deck = [], activePlayer = 1, tableCapacity = 6;
 let bankerHand = [], playerHand = [], playerDone = false, bankerTurn = false, askechi = true, dealTimer = null, battleSettled = false, bankerDrewThisHand = false;
 let soundEnabled = true;
@@ -109,7 +110,7 @@ function renderTables() {
     return `<article class="table-card">
       <h3>میز ${i + 1}</h3>
       <div class="amount">${money(base)} تومان</div>
-      <div class="meta">حداقل موجودی: ${money(base * 4)} تومان<br>ظرفیت: ۲ تا ۶ نفر</div>
+      <div class="meta">حداقل موجودی: ${money(base * 4)} تومان<br>ظرفیت: ۲ تا ۶ نفر<br><strong class="online-count" id="onlineCount${i}">آنلاین: ${Number(tableOccupancy[i]||0).toLocaleString("fa-IR")} نفر</strong></div>
       <button class="join" ${ok ? "" : "disabled"} onclick="joinTable(${i})">${ok ? "ورود به میز" : "موجودی کافی نیست"}</button>
     </article>`;
   }).join("");
