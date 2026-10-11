@@ -102,7 +102,8 @@
       const name=escapeHtml(p.profiles?.display_name||p.profiles?.username||"بازیکن");
       const initialCards=showAskechi?askechi.filter(x=>x.user_id===p.user_id).map(x=>cardHtml(x.card,true)).join(""):"";
       const privateCards=isMe&&!gameError?(game?.my_hand||[]).map(x=>cardHtml(x,true)).join(""):"";
-      const shownCards=initialCards || privateCards || (game?.status==="playing"&&!isMe?'<span class="card-back playing-card"></span>':"");
+      const revealedCards=game?.status==="settled"?(game?.revealed_hands?.[p.user_id]||[]).map(x=>cardHtml(x,true)).join(""):"";
+      const shownCards=initialCards || revealedCards || privateCards || (game?.status==="playing"&&!isMe?'<span class="card-back playing-card"></span>':"");
       return '<div class="seat s'+i+' '+(isMe?"active ":"")+(isBanker?"banker ":"")+(isActive?"turn-active":"")+'"><div class="avatar">'+(isBanker?"👑":"👤")+'</div><div class="name">'+name+'</div><div class="tag">'+(isBanker?"بانکدار":isMe?"شما":isActive?"نوبت بازی":"بازیکن")+'</div><div class="cards">'+shownCards+'</div></div>';
     }).join("");
     const statusText=gameError?"خطای دریافت وضعیت بازی: "+gameError.message:(game?.message||"در انتظار شروع بازی");
