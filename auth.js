@@ -63,7 +63,7 @@
 /* Live lobby, private hand display, shared chat and WebRTC voice. */
 (function(){
   const $=id=>document.getElementById(id);
-  let channel=null, chatChannel=null, voiceChannel=null, seatedTable=null, actionInFlight=false;
+  let channel=null, chatChannel=null, voiceChannel=null, seatedTable=null, actionInFlight=false, autoTurnTimer=null, autoTurnTimerKey=null;
   let voiceEnabled=false, localStream=null, shownAskechiRound=null, askechiVisibleUntil=0;
   const peers=new Map(), audioEls=new Map();
   let stakes=[20000,30000,40000,50000,50000,60000,70000,80000,90000,100000];
@@ -83,6 +83,26 @@
     const counts=Array(10).fill(0);
     (data||[]).forEach(row=>{const i=Number(row.table_id)-1;if(i>=0&&i<counts.length)counts[i]++;});
     counts.forEach((n,i)=>{const el=$("onlineCount"+i);if(el)el.textContent="آنلاین: "+cash(n)+" نفر";});
+  }
+  function scheduleTurnAutoAction(tableId,game,me,isMyTurn){
+    const hand=Array.isArray(game?.my_hand)?game.my_hand:[];
+    const score=Number(game?.my_score||0);
+    let action=null,delay=null;
+    if(isMyTurn&&game?.status==="playing"){
+      if(hand.length===1){action="draw";delay=15000;}
+      else if(hand.length===2&&score<=16){action="draw";delay=10000;}
+      else if(hand.length===2&&score>=18){action=game?.is_banker?"close":"stand";delay=350;}
+    }
+    const key=action?[tableId,game?.round_no,me,game?.phase,hand.length,score,action].join(":"):null;
+    if(key===autoTurnTimerKey)return;
+    if(autoTurnTimer)clearTimeout(autoTurnTimer);
+    autoTurnTimer=null;autoTurnTimerKey=key;
+    if(!key)return;
+    autoTurnTimer=setTimeout(()=>{
+      autoTurnTimer=null;
+      if(autoTurnTimerKey!==key||seatedTable!==tableId||actionInFlight)return;
+      sendGameAction(action).catch(console.error);
+    },delay);
   }
   async function renderLobby(tableIndex){
     const client=window.supabase21Game, tableId=tableIndex+1;
@@ -118,6 +138,7 @@
     $("bankChips").innerHTML=chipCount?Array.from({length:chipCount},(_,i)=>'<span class="chip-token chip-'+(i%4)+'" style="--chip-index:'+i+'"></span>').join(""):'<span class="empty-bank">بانک بازی</span>';
     $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableIndex])+" ژتون آزمایشی · ظرفیت ۶ نفر · "+seats.length+" بازیکن حاضر";
     const isMyTurn=!!game&&!gameError&&game.status==="playing"&&game.active_user_id===me;
+    scheduleTurnAutoAction(tableId,gameError?null:game,me,isMyTurn);
     $("startGameBtn").classList.toggle("hidden",!!game&&!gameError&&game.status==="playing");
     $("startGameBtn").disabled=seats.length<2;
     $("drawCardBtn").classList.toggle("hidden",!isMyTurn);
