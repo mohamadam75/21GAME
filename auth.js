@@ -170,7 +170,7 @@
     const from=payload.from;
     try{
       if(payload.kind==="hello"){
-        if(voiceEnabled&&me>from)await makePeer(from,true);
+        if(voiceEnabled&&me<from)await makePeer(from,true);
       }else if(payload.kind==="offer"&&voiceEnabled){
         const pc=await makePeer(from,false);await pc.setRemoteDescription(payload.sdp);
         const answer=await pc.createAnswer();await pc.setLocalDescription(answer);
@@ -198,7 +198,7 @@
       $("voiceBtn").classList.add("active");$("voiceBtn").textContent="🎙 قطع وویس";
       $("voiceNote").textContent="میکروفون فعال شد؛ در انتظار اتصال بازیکنان دیگر...";
       const {data}=await window.supabase21Game.from("table_seats").select("user_id").eq("table_id",seatedTable);
-      for(const row of data||[])if(row.user_id!==window.current21GameUser.id)await sendVoiceSignal(row.user_id,{kind:"hello"});
+      for(const row of data||[])if(row.user_id!==window.current21GameUser.id){if(window.current21GameUser.id<row.user_id)await makePeer(row.user_id,true);else await sendVoiceSignal(row.user_id,{kind:"hello"});}
     }catch(e){voiceEnabled=false;if(localStream)localStream.getTracks().forEach(t=>t.stop());localStream=null;alert("فعال‌سازی میکروفون انجام نشد: "+e.message);}
   }
   async function setupTableChannels(tableId,i){
