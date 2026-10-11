@@ -56,6 +56,11 @@ begin
 
   if p_action='start' then
     if ps.status='playing' then raise exception 'game_already_running'; end if;
+    if ps.status='settled' and ps.banker_user_id is not null and ps.bank_amount>0 then
+      update public.profiles set demo_chips=demo_chips+ps.bank_amount where id=ps.banker_user_id;
+      insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by)
+        values(ps.banker_user_id,ps.bank_amount,'refund','بازگشت ژتون باقی‌مانده از میز '||p_table_id,uid);
+    end if;
     select array_agg(user_id order by seat_no),count(*) into seat_ids,seat_count
       from public.table_seats where table_id=p_table_id;
     if seat_count < 2 then raise exception 'need_two_players'; end if;
@@ -156,6 +161,9 @@ begin
         if uid=banker then
           update public.table_public_state set status='settled',active_user_id=null,public_message='بانکدار به ۲۱ رسید؛ دست تمام شد',updated_at=now() where table_id=p_table_id;
         else
+          update public.profiles set demo_chips=demo_chips+t.stake where id=uid;
+          insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by)
+            values(uid,t.stake,'game_win','برد با ۲۱ در میز '||p_table_id,banker);
           update public.table_public_state set status='settled',active_user_id=null,public_message='بازیکن به ۲۱ رسید؛ این دست برد',bank_amount=greatest(0,bank_amount-t.stake),updated_at=now() where table_id=p_table_id;
         end if;
       end if;
@@ -169,7 +177,14 @@ begin
       select coalesce(sum((x->>'value')::integer),0) into my_score from jsonb_array_elements(my_hand) x;
       opponent_hand:=coalesce(hands->coalesce(gs->>'current_opponent',''),'[]'::jsonb);
       select coalesce(sum((x->>'value')::integer),0) into opponent_score from jsonb_array_elements(opponent_hand) x;
-      if my_score>21 or (opponent_score<=21 and opponent_score>my_score) then result_text:='بازیکن برنده شد';
+      if my_score>21 or (opponent_score<=21 and opponent_score>my_score) then
+        result_text:='بازیکن برنده شد';
+        if coalesce((gs->>'current_opponent'),'')<>'' and ps.bank_amount>=t.stake then
+          update public.profiles set demo_chips=demo_chips+t.stake where id=(gs->>'current_opponent')::uuid;
+          insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by)
+            values((gs->>'current_opponent')::uuid,t.stake,'game_win','برد در برابر بانکدار در میز '||p_table_id,banker);
+          update public.table_public_state set bank_amount=greatest(0,bank_amount-t.stake) where table_id=p_table_id;
+        end if;
       else result_text:='بانکدار برنده شد (در تساوی بانکدار برنده است)'; end if;
       gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
       update public.table_public_state set status='settled',active_user_id=null,public_message=result_text,updated_at=now() where table_id=p_table_id;
