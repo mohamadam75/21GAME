@@ -204,7 +204,11 @@ begin
             values((gs->>'current_opponent')::uuid,t.stake,'game_win','برد در برابر بانکدار در میز '||p_table_id,banker);
           update public.table_public_state set bank_amount=greatest(0,bank_amount-t.stake) where table_id=p_table_id;
         end if;
-      else result_text:='بانکدار برنده شد (در تساوی بانکدار برنده است)'; end if;
+      else
+        if opponent_score=my_score then result_text:='مساوی؛ بانکدار برنده شد';
+        elsif opponent_score>21 then result_text:='بازیکن از ۲۱ عبور کرد؛ بانکدار برنده شد';
+        else result_text:='بانکدار برنده شد'; end if;
+      end if;
       gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
       update public.table_public_state set status='settled',active_user_id=null,public_message=result_text,updated_at=now() where table_id=p_table_id;
     end if;
@@ -239,7 +243,9 @@ begin
   select hands,game_state into h,gs from public.table_private_state where table_id=p_table_id;
   h:=coalesce(h->uid::text,'[]'::jsonb);
   select coalesce(sum((x->>'value')::integer),0) into total from jsonb_array_elements(h) x;
-  return jsonb_build_object('my_hand',h,'my_score',coalesce(total,0),'phase',coalesce(gs->>'phase','waiting'),
+  return jsonb_build_object('my_hand',h,'my_score',coalesce(total,0),
+    'revealed_hands',case when ps.status='settled' then coalesce((select jsonb_object_agg(k,v) from jsonb_each(coalesce((select hands from public.table_private_state where table_id=p_table_id),'{}'::jsonb)) as e(k,v)),'{}'::jsonb) else '{}'::jsonb end,
+    'phase',coalesce(gs->>'phase','waiting'),
     'status',coalesce(ps.status,'waiting'),'banker_user_id',ps.banker_user_id,'active_user_id',ps.active_user_id,
     'bank_amount',ps.bank_amount,'round_no',ps.round_no,'message',ps.public_message,'is_banker',ps.banker_user_id=uid,'askechi_cards',coalesce(gs->'askechi_cards','[]'::jsonb));
 end;
