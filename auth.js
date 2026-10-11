@@ -41,13 +41,23 @@
       const isMe=p&&p.user_id===window.current21GameUser?.id;
       return '<div class="seat s'+i+' '+(isMe?"active":"")+'"><div class="avatar">'+(p?"👤":"＋")+'</div><div class="name">'+name.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")+'</div><div class="tag">'+(isMe?"شما":p?"بازیکن":"")+'</div><div class="cards">'+(p?"● ● ●":"")+'</div></div>';
     }).join("");
-    $("status").textContent=seats.length>=2?"بازیکنان حاضرند؛ آماده‌سازی موتور بازی سرور لازم است":"در انتظار ورود بازیکنان دیگر";
-    $("handInfo").textContent=seats.length+" از ۶ صندلی پر است. کارت‌ها تا آماده‌شدن موتور امن بازی پخش نمی‌شوند.";
+    const {data:game,error:gameError}=await client.rpc("game_my_hand",{p_table_id:tableId});
+    const statusText=gameError?"موتور بازی هنوز نصب نشده است؛ مدیر باید فایل supabase/game_engine.sql را در SQL Editor اجرا کند.":(game?.message||"در انتظار شروع بازی");
+    $("status").textContent=statusText;
+    $("handInfo").textContent=gameError?"برای پخش کارت، ابتدا نصب موتور بازی در Supabase لازم است.":("کارت‌های شما: "+(game?.my_hand||[]).map(c=>c.rank+c.suit).join("  ")+" · امتیاز: "+(game?.my_score||0));
     $("cardChoices").innerHTML="";
-    $("standBtn").style.display="none";$("closeBankBtn").style.display="none";$("nextPlayerBtn").style.display="none";$("nextRoundBtn").style.display="none";
-    $("bankAmount").textContent=cash(stakes[tableIndex]*3);
-    $("bankChips").innerHTML='<span class="empty-bank">لابی آنلاین</span>';
-    $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableIndex])+" ژتون آزمایشی · ظرفیت ۶ نفر";
+    $("bankAmount").textContent=cash(game?.bank_amount||stakes[tableIndex]*3);
+    $("bankChips").innerHTML='<span class="empty-bank">'+(game?.status==="playing"?"بانک بازی":"لابی آنلاین")+'</span>';
+    $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableIndex])+" ژتون آزمایشی · ظرفیت ۶ نفر · "+seats.length+" بازیکن حاضر";
+    const me=window.current21GameUser?.id;
+    const isMyTurn=!!game&&!gameError&&game.status==="playing"&&game.active_user_id===me;
+    $("startGameBtn").classList.toggle("hidden",!!game&&!gameError&&game.status==="playing");
+    $("startGameBtn").disabled=seats.length<2;
+    $("drawCardBtn").classList.toggle("hidden",!isMyTurn);
+    $("standBtn").style.display=isMyTurn?"inline-block":"none";
+    $("closeBankBtn").style.display=isMyTurn&&game?.is_banker?"inline-block":"none";
+    $("nextPlayerBtn").style.display="none";
+    $("nextRoundBtn").style.display="none";
   }
   async function joinOnlineTable(i){
     const client=window.supabase21Game, user=window.current21GameUser;
@@ -79,6 +89,16 @@
       await renderLobby(i);
     }catch(e){alert("ورود به میز انجام نشد: "+(e.message||e));}
   }
+  async function sendGameAction(action){
+    const client=window.supabase21Game;
+    if(!client||!seatedTable)return;
+    const {data,error}=await client.rpc("game_action",{p_table_id:seatedTable,p_action:action});
+    if(error){alert("خطای بازی: "+error.message);return;}
+    const i=seatedTable-1;
+    await renderLobby(i);
+    if(data?.message)$("status").textContent=data.message;
+    if(action==="pause")$("modal").classList.add("hidden");
+  }
   async function leaveOnlineTable(){
     const client=window.supabase21Game,user=window.current21GameUser;
     if(!client||!user||!seatedTable)return;
@@ -91,10 +111,14 @@
   window.addEventListener("DOMContentLoaded",()=>{
     window.joinTable=joinOnlineTable;
     $("leaveOnlineTable").addEventListener("click",leaveOnlineTable);
-    $("pauseOnlineTable").addEventListener("click",()=>{if(!seatedTable)return;$("modal").classList.add("hidden");alert("از میز فقط موقتاً خارج شدی؛ صندلیت رزرو می‌ماند. برای برگشت، همان میز را دوباره باز کن. توجه: ادامهٔ واقعی دست بازی پس از خروج موقت هنوز به موتور بازی سمت سرور نیاز دارد.");});
+    $("startGameBtn").addEventListener("click",()=>sendGameAction("start"));
+    $("drawCardBtn").addEventListener("click",()=>sendGameAction("draw"));
+    $("standBtn").addEventListener("click",()=>sendGameAction("stand"));
+    $("closeBankBtn").addEventListener("click",()=>sendGameAction("close"));
+    $("pauseOnlineTable").addEventListener("click",()=>sendGameAction("pause").then(()=>$("modal").classList.add("hidden")));
     window.addEventListener("21game:authenticated",refreshOccupancy);
     const lobbyClient=window.supabase21Game;
     if(lobbyClient){refreshOccupancy();lobbyClient.channel("lobby-occupancy").on("postgres_changes",{event:"*",schema:"public",table:"table_seats"},refreshOccupancy).subscribe();}
-    $("closeModal").addEventListener("click",()=>{if(seatedTable)leaveOnlineTable();});
+    $("closeModal").addEventListener("click",()=>{if(seatedTable)$("modal").classList.add("hidden");});
   });
 })();
