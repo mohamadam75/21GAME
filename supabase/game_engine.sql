@@ -198,7 +198,7 @@ begin
   select coalesce(sum((x->>'value')::integer),0) into total from jsonb_array_elements(h) x;
   return jsonb_build_object('my_hand',h,'my_score',coalesce(total,0),'phase',coalesce(gs->>'phase','waiting'),
     'status',coalesce(ps.status,'waiting'),'banker_user_id',ps.banker_user_id,'active_user_id',ps.active_user_id,
-    'bank_amount',ps.bank_amount,'message',ps.public_message);
+    'bank_amount',ps.bank_amount,'message',ps.public_message,'is_banker',ps.banker_user_id=uid);
 end;
 $$;
 
