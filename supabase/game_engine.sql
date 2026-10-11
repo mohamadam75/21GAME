@@ -249,7 +249,7 @@ begin
     'status',coalesce(ps.status,'waiting'),'banker_user_id',ps.banker_user_id,'active_user_id',ps.active_user_id,
     'bank_amount',ps.bank_amount,'round_no',ps.round_no,'message',ps.public_message,'is_banker',ps.banker_user_id=uid,'askechi_cards',coalesce(gs->'askechi_cards','[]'::jsonb));
 end;
-$;
+$$;
 
 revoke all on function public.game_action(integer,text) from public;
 revoke all on function public.game_my_hand(integer) from public;
