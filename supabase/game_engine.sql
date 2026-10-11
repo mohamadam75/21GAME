@@ -171,10 +171,16 @@ begin
       select coalesce(sum((x->>'value')::integer),0) into score from jsonb_array_elements(v_hands->uid::text) x;
       if uid=banker and score>21 then
         gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
+        if coalesce(gs->>'current_opponent','')<>'' and ps.bank_amount>=t.stake then
+          update public.profiles set demo_chips=demo_chips+t.stake where id=(gs->>'current_opponent')::uuid;
+          insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by)
+            values((gs->>'current_opponent')::uuid,t.stake,'game_win','برد؛ بانکدار از ۲۱ عبور کرد در میز '||p_table_id,banker);
+          update public.table_public_state as state set bank_amount=greatest(0,state.bank_amount-t.stake) where state.table_id=p_table_id;
+        end if;
         update public.table_public_state set status='settled',active_user_id=null,public_message='بانکدار از ۲۱ عبور کرد؛ دست تمام شد',updated_at=now() where table_id=p_table_id;
       elsif score>21 then
         gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
-        update public.table_public_state set status='settled',active_user_id=null,public_message='بازیکن از ۲۱ عبور کرد؛ این دست باخت',updated_at=now() where table_id=p_table_id;
+        update public.table_public_state as state set status='settled',active_user_id=null,public_message='بازیکن از ۲۱ عبور کرد؛ این دست باخت',bank_amount=state.bank_amount+t.stake,updated_at=now() where state.table_id=p_table_id;
       elsif score=21 then
         gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
         if uid=banker then
