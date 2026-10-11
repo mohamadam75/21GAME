@@ -213,8 +213,8 @@
       .subscribe();
     chatChannel=client.channel("table-chat-"+tableId)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"table_chat",filter:"table_id=eq."+tableId},payload=>{if(payload.new?.user_id!==window.current21GameUser?.id&&$("chatPanel").classList.contains("hidden")){$("chatUnreadDot").classList.remove("hidden");hasUnreadChat=true;}loadChat();}).subscribe();
-    voiceChannel=client.channel("voice-table-"+tableId)
-      .on("broadcast",{event:"signal"},({payload})=>handleVoiceSignal(payload)).subscribe();
+    voiceChannel=client.channel("voice-table-"+tableId,{config:{broadcast:{self:false,ack:true}}}).on("broadcast",{event:"signal"},({payload})=>handleVoiceSignal(payload));
+    await new Promise(resolve=>{let done=false;voiceChannel.subscribe(status=>{if(status==="SUBSCRIBED"&&!done){done=true;resolve();}if((status==="CHANNEL_ERROR"||status==="TIMED_OUT")&&!done){done=true;resolve();$("voiceNote").textContent="خطای اتصال وویس؛ تنظیمات Realtime را بررسی کنید.";}});});
     await loadChat();
   }
   async function joinOnlineTable(i){
