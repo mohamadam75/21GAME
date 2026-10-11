@@ -123,7 +123,7 @@ begin
     update public.table_public_state set public_message='بازیکن موقتاً خارج شده؛ صندلی محفوظ است',updated_at=now() where table_id=p_table_id;
   elsif p_action='resume' then
     gs:=coalesce(priv.game_state,'{}'::jsonb);
-    select coalesce(jsonb_agg(v),'[]'::jsonb) into deck from jsonb_array_elements(coalesce(gs->'paused_users','[]'::jsonb)) v where v#>>'{}'<>uid::text;
+    select coalesce(jsonb_agg(p.value),'[]'::jsonb) into deck from jsonb_array_elements(coalesce(gs->'paused_users','[]'::jsonb)) as p(value) where p.value#>>'{}'<>uid::text;
     gs:=jsonb_set(gs,'{paused_users}',coalesce(deck,'[]'::jsonb),true);
     update public.table_private_state set game_state=gs,updated_at=now() where table_id=p_table_id;
   else
@@ -136,12 +136,19 @@ begin
       card:=deck->0; deck:=deck-0;
       hands:=jsonb_set(hands,array[uid::text],coalesce(hands->uid::text,'[]'::jsonb)||jsonb_build_array(card),true);
       select coalesce(sum((x->>'value')::integer),0) into score from jsonb_array_elements(hands->uid::text) x;
-      if score>21 then
+      if uid=banker and score>21 then
+        gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
+        update public.table_public_state set status='settled',active_user_id=null,public_message='بانکدار از ۲۱ عبور کرد؛ دست تمام شد',updated_at=now() where table_id=p_table_id;
+      elsif score>21 then
         gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
         update public.table_public_state set status='settled',active_user_id=null,public_message='بازیکن از ۲۱ عبور کرد؛ این دست باخت',updated_at=now() where table_id=p_table_id;
       elsif score=21 then
         gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
-        update public.table_public_state set status='settled',active_user_id=null,public_message='بازیکن به ۲۱ رسید؛ این دست برد',bank_amount=greatest(0,bank_amount-t.stake),updated_at=now() where table_id=p_table_id;
+        if uid=banker then
+          update public.table_public_state set status='settled',active_user_id=null,public_message='بانکدار به ۲۱ رسید؛ دست تمام شد',updated_at=now() where table_id=p_table_id;
+        else
+          update public.table_public_state set status='settled',active_user_id=null,public_message='بازیکن به ۲۱ رسید؛ این دست برد',bank_amount=greatest(0,bank_amount-t.stake),updated_at=now() where table_id=p_table_id;
+        end if;
       end if;
     elsif p_action='stand' then
       gs:=jsonb_set(gs,'{phase}','"banker_turn"'::jsonb,true);
@@ -151,7 +158,7 @@ begin
       if uid<>banker then raise exception 'banker_only'; end if;
       my_hand:=coalesce(hands->uid::text,'[]'::jsonb);
       select coalesce(sum((x->>'value')::integer),0) into my_score from jsonb_array_elements(my_hand) x;
-      opponent_hand:=coalesce(hands->coalesce((select user_id::text from public.table_seats where table_id=p_table_id and user_id<>banker and user_id=ps.active_user_id),''),'[]'::jsonb);
+      opponent_hand:=coalesce(hands->coalesce(gs->>'current_opponent',''),'[]'::jsonb);
       select coalesce(sum((x->>'value')::integer),0) into opponent_score from jsonb_array_elements(opponent_hand) x;
       if my_score>21 or (opponent_score<=21 and opponent_score>my_score) then result_text:='بازیکن برنده شد';
       else result_text:='بانکدار برنده شد (در تساوی بانکدار برنده است)'; end if;
