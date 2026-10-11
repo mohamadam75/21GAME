@@ -1,6 +1,6 @@
 -- 21GAME secure server-side game engine (demo chips only)
 -- Run this entire file once in Supabase Dashboard > SQL Editor.
--- Private cards/deck stay in table_private_state; clients cannot read that table directly.
+-- Private cards/v_deck stay in table_private_state; clients cannot read that table directly.
 
 create or replace function public.game_action(p_table_id integer, p_action text)
 returns jsonb
@@ -18,8 +18,8 @@ declare
   active uuid;
   next_uid uuid;
   seat_ids uuid[];
-  deck jsonb;
-  hands jsonb;
+  v_deck jsonb;
+  v_hands jsonb;
   gs jsonb;
   card jsonb;
   rank_text text;
@@ -66,8 +66,8 @@ begin
     if seat_count < 2 then raise exception 'need_two_players'; end if;
     if seat_count > t.capacity then raise exception 'table_full'; end if;
 
-    -- Server-side shuffled deck: ranks 6-10, J, Q, K, A; four suits each.
-    select jsonb_agg(x.card order by random()) into deck
+    -- Server-side shuffled v_deck: ranks 6-10, J, Q, K, A; four suits each.
+    select jsonb_agg(x.card order by random()) into v_deck
     from (
       select jsonb_build_object(
         'rank',r.rank,
@@ -79,16 +79,16 @@ begin
     ) x;
 
     -- As-keshi: deal in seat order until a player receives an Ace.
-    hands := '{}'::jsonb;
+    v_hands := '{}'::jsonb;
     gs := jsonb_build_object('phase','askechi','cursor',0,'round_no',coalesce(ps.round_no,0)+1,'message','آس‌کشی');
     banker := null;
     i := 0;
     while banker is null loop
-      if jsonb_array_length(deck)=0 then raise exception 'deck_exhausted'; end if;
+      if jsonb_array_length(v_deck)=0 then raise exception 'deck_exhausted'; end if;
       active := seat_ids[(i % seat_count)+1];
-      card := deck->0;
-      deck := deck - 0;
-      hands := jsonb_set(hands,array[active::text],coalesce(hands->active::text,'[]'::jsonb) || jsonb_build_array(card),true);
+      card := v_deck->0;
+      v_deck := v_deck - 0;
+      v_hands := jsonb_set(v_hands,array[active::text],coalesce(v_hands->active::text,'[]'::jsonb) || jsonb_build_array(card),true);
       i := i+1;
       if card->>'rank'='A' then banker := active; end if;
     end loop;
@@ -102,9 +102,9 @@ begin
       values(banker,-(stake_amount*3),'game_stake','شروع بانکداری میز '||p_table_id,banker);
 
     -- Remove as-keshi cards before play; only banker role persists.
-    hands := jsonb_build_object(banker::text,'[]'::jsonb);
-    deck := (select coalesce(jsonb_agg(value order by ord),'[]'::jsonb)
-             from jsonb_array_elements(deck) with ordinality as d(value,ord));
+    v_hands := jsonb_build_object(banker::text,'[]'::jsonb);
+    v_deck := (select coalesce(jsonb_agg(value order by ord),'[]'::jsonb)
+             from jsonb_array_elements(v_deck) with ordinality as d(value,ord));
     select array_agg(user_id order by seat_no) into seat_ids from public.table_seats where table_id=p_table_id;
     select user_id into next_uid from public.table_seats
       where table_id=p_table_id and seat_no >
@@ -117,7 +117,7 @@ begin
       select user_id into next_uid from public.table_seats where table_id=p_table_id and user_id<>banker order by seat_no limit 1;
     end if;
     gs := jsonb_build_object('phase','player_turn','round_no',coalesce(ps.round_no,0)+1,'banker_turn',false,'used_cards',0,'paused_users','[]'::jsonb);
-    update public.table_private_state set deck=deck,hands=hands,game_state=gs,updated_at=now() where table_id=p_table_id;
+    update public.table_private_state set deck=v_deck,hands=v_hands,game_state=gs,updated_at=now() where table_id=p_table_id;
     update public.table_public_state set status='playing',banker_user_id=banker,active_user_id=next_uid,
       bank_amount=stake_amount*3,round_no=coalesce(ps.round_no,0)+1,public_message='بانکدار انتخاب شد؛ نوبت بازیکن بعد از بانکدار است',updated_at=now()
       where table_id=p_table_id;
@@ -137,19 +137,19 @@ begin
     update public.table_private_state set game_state=gs,updated_at=now() where table_id=p_table_id;
   elsif p_action='resume' then
     gs:=coalesce(priv.game_state,'{}'::jsonb);
-    select coalesce(jsonb_agg(p.value),'[]'::jsonb) into deck from jsonb_array_elements(coalesce(gs->'paused_users','[]'::jsonb)) as p(value) where p.value#>>'{}'<>uid::text;
-    gs:=jsonb_set(gs,'{paused_users}',coalesce(deck,'[]'::jsonb),true);
+    select coalesce(jsonb_agg(p.value),'[]'::jsonb) into v_deck from jsonb_array_elements(coalesce(gs->'paused_users','[]'::jsonb)) as p(value) where p.value#>>'{}'<>uid::text;
+    gs:=jsonb_set(gs,'{paused_users}',coalesce(v_deck,'[]'::jsonb),true);
     update public.table_private_state set game_state=gs,updated_at=now() where table_id=p_table_id;
   else
     if ps.status<>'playing' then raise exception 'game_not_running'; end if;
     if ps.active_user_id<>uid then raise exception 'not_your_turn'; end if;
-    deck:=priv.deck; hands:=priv.hands; gs:=priv.game_state;
+    v_deck:=priv.deck; v_hands:=priv.hands; gs:=priv.game_state;
     banker:=ps.banker_user_id;
     if p_action='draw' then
-      if jsonb_array_length(deck)=0 then raise exception 'deck_empty'; end if;
-      card:=deck->0; deck:=deck-0;
-      hands:=jsonb_set(hands,array[uid::text],coalesce(hands->uid::text,'[]'::jsonb)||jsonb_build_array(card),true);
-      select coalesce(sum((x->>'value')::integer),0) into score from jsonb_array_elements(hands->uid::text) x;
+      if jsonb_array_length(v_deck)=0 then raise exception 'deck_empty'; end if;
+      card:=v_deck->0; v_deck:=v_deck-0;
+      v_hands:=jsonb_set(v_hands,array[uid::text],coalesce(v_hands->uid::text,'[]'::jsonb)||jsonb_build_array(card),true);
+      select coalesce(sum((x->>'value')::integer),0) into score from jsonb_array_elements(v_hands->uid::text) x;
       if uid=banker and score>21 then
         gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
         update public.table_public_state set status='settled',active_user_id=null,public_message='بانکدار از ۲۱ عبور کرد؛ دست تمام شد',updated_at=now() where table_id=p_table_id;
@@ -173,9 +173,9 @@ begin
       update public.table_public_state set active_user_id=banker,public_message='بازیکن بسته؛ نوبت بانکدار',updated_at=now() where table_id=p_table_id;
     elsif p_action='close' then
       if uid<>banker then raise exception 'banker_only'; end if;
-      my_hand:=coalesce(hands->uid::text,'[]'::jsonb);
+      my_hand:=coalesce(v_hands->uid::text,'[]'::jsonb);
       select coalesce(sum((x->>'value')::integer),0) into my_score from jsonb_array_elements(my_hand) x;
-      opponent_hand:=coalesce(hands->coalesce(gs->>'current_opponent',''),'[]'::jsonb);
+      opponent_hand:=coalesce(v_hands->coalesce(gs->>'current_opponent',''),'[]'::jsonb);
       select coalesce(sum((x->>'value')::integer),0) into opponent_score from jsonb_array_elements(opponent_hand) x;
       if my_score>21 or (opponent_score<=21 and opponent_score>my_score) then
         result_text:='بازیکن برنده شد';
@@ -189,7 +189,7 @@ begin
       gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
       update public.table_public_state set status='settled',active_user_id=null,public_message=result_text,updated_at=now() where table_id=p_table_id;
     end if;
-    update public.table_private_state set deck=deck,hands=hands,game_state=gs,updated_at=now() where table_id=p_table_id;
+    update public.table_private_state set deck=v_deck,hands=v_hands,game_state=gs,updated_at=now() where table_id=p_table_id;
   end if;
 
   select * into ps from public.table_public_state where table_id=p_table_id;
