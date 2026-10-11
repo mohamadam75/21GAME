@@ -23,7 +23,7 @@ function isSpecialWin(hand) {
   return false;
 }
 
-const tables = [20000, 30000, 40000, 50000, 50000, 60000, 70000, 80000, 90000, 100000];
+let tables = [20000, 30000, 40000, 50000, 50000, 60000, 70000, 80000, 90000, 100000];
 let tableOccupancy = Array(tables.length).fill(0);
 let wallet = 0, currentTable = null, bank = 0, banker = 0, bankRound = 1, players = [], deck = [], activePlayer = 1, tableCapacity = 6;
 let bankerHand = [], playerHand = [], playerDone = false, bankerTurn = false, askechi = true, dealTimer = null, battleSettled = false, bankerDrewThisHand = false;
@@ -36,7 +36,8 @@ let bankRoundNeedsEnd = false;
 
 const names = ["بازیکن ۱", "بازیکن ۲", "بازیکن ۳", "بازیکن ۴", "بازیکن ۵", "بازیکن ۶"];
 const $ = id => document.getElementById(id);
-const money = n => n.toLocaleString("fa-IR");
+const money = n => Number(n || 0).toLocaleString("fa-IR");
+window.update21GameTables = function(rows) { tables = rows.slice().sort((a,b)=>a.id-b.id).map(t=>Number(t.stake)); renderTables(); };
 
 // ===== Sound =====
 function playCardSound() {
