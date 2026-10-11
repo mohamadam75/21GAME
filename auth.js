@@ -90,9 +90,15 @@
     const score=Number(game?.my_score||0);
     let action=null,delay=null;
     if(isMyTurn&&game?.status==="playing"){
-      if(hand.length===1){action="draw";delay=15000;}
-      else if(hand.length===2&&score<=16){action="draw";delay=10000;}
-      else if(hand.length===2&&score>=18){action=game?.is_banker?"close":"stand";delay=350;}
+      if(game?.is_banker){
+        // Banker keeps drawing until at least 18, regardless of hand length.
+        if(score<18){action="draw";delay=10000;}
+        else {action="close";delay=350;}
+      }else{
+        if(hand.length===1){action="draw";delay=15000;}
+        else if(hand.length===2&&score<=16){action="draw";delay=10000;}
+        else if(hand.length===2&&score>=18){action="stand";delay=350;}
+      }
     }
     const key=action?[tableId,game?.round_no,me,game?.phase,hand.length,score,action].join(":"):null;
     if(key===autoTurnTimerKey)return;
