@@ -55,7 +55,61 @@ begin
   on conflict (table_id) do nothing;
   select * into priv from public.table_private_state where table_id=p_table_id for update;
 
-  if p_action='start' then
+  if p_action='start'
+     and ps.status='settled'
+     and ps.banker_user_id is not null
+     and ps.bank_amount>0
+     and ps.bank_amount < t.stake*9
+     and coalesce((priv.game_state->>'banker_hands_played')::integer,0)<3 then
+    -- Continue the same banker's cycle; do not run As-keshi after every hand.
+    banker:=ps.banker_user_id;
+    select s.user_id into next_uid
+      from public.table_seats s
+      where s.table_id=p_table_id and s.user_id<>banker
+        and s.seat_no > coalesce((
+          select seat_no from public.table_seats
+          where table_id=p_table_id and user_id=(priv.game_state->>'current_opponent')::uuid
+        ),0)
+      order by s.seat_no limit 1;
+    if next_uid is null then
+      select user_id into next_uid from public.table_seats
+      where table_id=p_table_id and user_id<>banker order by seat_no limit 1;
+    end if;
+    if next_uid is null then raise exception 'need_two_players'; end if;
+    v_deck:=coalesce(priv.deck,'[]'::jsonb);
+    if jsonb_array_length(v_deck)<2 then
+      select jsonb_agg(x.card order by random()) into v_deck
+      from (
+        select jsonb_build_object(
+          'rank',r.rank,'suit',su.suit,
+          'value',case r.rank when 'A' then 11 when 'K' then 4 when 'Q' then 3 when 'J' then 2 else r.rank::integer end
+        ) as card
+        from (values ('6'),('7'),('8'),('9'),('10'),('J'),('Q'),('K'),('A')) r(rank)
+        cross join (values ('♠'),('♥'),('♦'),('♣')) su(suit)
+      ) x;
+    end if;
+    -- If the opponent busted, the banker keeps their current hand.
+    if ps.public_message like 'بازیکن از ۲۱ عبور کرد%' then
+      v_hands:=jsonb_build_object(banker::text,coalesce(priv.hands->banker::text,'[]'::jsonb));
+    else
+      v_hands:='{}'::jsonb;
+    end if;
+    card:=v_deck->0; v_deck:=v_deck-0;
+    v_hands:=jsonb_set(v_hands,array[next_uid::text],jsonb_build_array(card),true);
+    if ps.public_message not like 'بازیکن از ۲۱ عبور کرد%' then
+      card:=v_deck->0; v_deck:=v_deck-0;
+      v_hands:=jsonb_set(v_hands,array[banker::text],jsonb_build_array(card),true);
+    end if;
+    gs:=coalesce(priv.game_state,'{}'::jsonb);
+    gs:=jsonb_set(gs,'{phase}','"player_turn"'::jsonb,true);
+    gs:=jsonb_set(gs,'{banker_turn}','false'::jsonb,true);
+    gs:=jsonb_set(gs,'{current_opponent}',to_jsonb(next_uid::text),true);
+    gs:=jsonb_set(gs,'{askechi_cards}','[]'::jsonb,true);
+    update public.table_private_state set deck=v_deck,hands=v_hands,game_state=gs,updated_at=now() where table_id=p_table_id;
+    update public.table_public_state set status='playing',active_user_id=next_uid,
+      round_no=coalesce(ps.round_no,0)+1,public_message='ادامه بانکداری؛ نوبت بازیکن بعدی',updated_at=now()
+      where table_id=p_table_id;
+  elsif p_action='start' then
     if ps.status='playing' then raise exception 'game_already_running'; end if;
     if ps.status='settled' and ps.banker_user_id is not null and ps.bank_amount>0 then
       update public.profiles set demo_chips=demo_chips+ps.bank_amount where id=ps.banker_user_id;
@@ -81,7 +135,7 @@ begin
 
     -- As-keshi: deal in seat order until a player receives an Ace; keep the dealt cards public for the animation.
     v_hands := '{}'::jsonb;
-    gs := jsonb_build_object('phase','askechi','cursor',0,'round_no',coalesce(ps.round_no,0)+1,'message','آس‌کشی','askechi_cards','[]'::jsonb);
+    gs := jsonb_build_object('phase','askechi','cursor',0,'round_no',coalesce(ps.round_no,0)+1,'message','آس‌کشی','askechi_cards','[]'::jsonb,'banker_hands_played',0);
     banker := null;
     i := 0;
     while banker is null loop
@@ -218,6 +272,9 @@ begin
       end if;
       gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
       update public.table_public_state set status='settled',active_user_id=null,public_message=result_text,updated_at=now() where table_id=p_table_id;
+    end if;
+    if coalesce(gs->>'phase','')='settled' then
+      gs:=jsonb_set(gs,'{banker_hands_played}',to_jsonb(coalesce((gs->>'banker_hands_played')::integer,0)+1),true);
     end if;
     update public.table_private_state set deck=v_deck,hands=v_hands,game_state=gs,updated_at=now() where table_id=p_table_id;
   end if;
