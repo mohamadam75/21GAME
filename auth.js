@@ -9,10 +9,55 @@
   async function refreshProfile(){if(window.current21GameUser)await loadProfile({id:window.current21GameUser.id,email:window.current21GameUser.email});}
   async function submitAuth(e){e.preventDefault();if(!client)return status("تنظیم Supabase کامل نیست؛ فایل SUPABASE_SETUP.md را دنبال کنید.",true);const email=$("authEmail").value.trim(),password=$("authPassword").value;$("authSubmit").disabled=true;status(isSignup?"در حال ساخت حساب...":"در حال ورود...");try{if(isSignup){const username=$("authUsername").value.trim().toLowerCase();if(!/^[a-z0-9_]{3,24}$/.test(username))throw Error("نام کاربری باید ۳ تا ۲۴ حرف انگلیسی، عدد یا زیرخط باشد.");const r=await client.auth.signUp({email,password,options:{data:{username,display_name:username}}});if(r.error)throw r.error;if(!r.data.session){status("حساب ساخته شد. ایمیل تأیید را بررسی کنید؛ سپس وارد شوید.");return;}await loadProfile(r.data.user);}else{const r=await client.auth.signInWithPassword({email,password});if(r.error)throw r.error;await loadProfile(r.data.user);}}catch(err){status(err.message||"عملیات انجام نشد.",true);}finally{$("authSubmit").disabled=false;}}
   function requestForm(type){if(!window.current21GameUser){alert("ابتدا وارد حساب شوید.");return;}const wd=type==="withdrawal";const body=['<p>'+(wd?"درخواست برداشت ژتون آزمایشی":"درخواست شارژ ژتون آزمایشی")+'</p>','<p>موجودی: <strong>'+Number(profile?.demo_chips||0).toLocaleString("fa-IR")+' ژتون</strong></p>','<label>مبلغ ژتون</label><input id="reqAmount" type="number" min="1" step="1" placeholder="مبلغ" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">',wd?'<input id="reqRef" placeholder="توضیح درخواست" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">':'<label>روش درخواست</label><select id="reqMethod" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff"><option value="card_transfer">کارت به کارت (بررسی دستی)</option><option value="voucher">ووچر (بررسی دستی)</option><option value="manual">هماهنگی با مدیر</option></select><input id="reqRef" placeholder="شماره پیگیری یا توضیح" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">','<p style="font-size:12px;color:#9fb0c6">این نسخه فقط ژتون آزمایشی ثبت می‌کند؛ پرداخت واقعی انجام نمی‌شود.</p><button id="reqSubmit">ثبت درخواست</button><p id="reqStatus"></p>'].join("");window.open21GameAccountModal(wd?"درخواست برداشت ژتون":"درخواست شارژ ژتون",body);$("reqSubmit").onclick=async()=>{const amount=Number($("reqAmount").value),ref=$("reqRef").value.trim(),method=wd?"manual":$("reqMethod").value,msg=$("reqStatus");if(!Number.isSafeInteger(amount)||amount<=0){msg.textContent="مبلغ معتبر وارد کنید.";return;}if(wd&&amount>Number(profile?.demo_chips||0)){msg.textContent="موجودی ژتون کافی نیست.";return;}msg.textContent="در حال ثبت...";$("reqSubmit").disabled=true;const r=await client.from("wallet_requests").insert({user_id:window.current21GameUser.id,request_type:type,amount,method,reference:ref||null});$("reqSubmit").disabled=false;if(r.error){msg.textContent="ثبت نشد: "+r.error.message;return;}msg.textContent="درخواست ثبت شد و پس از بررسی مدیر نتیجه اعلام می‌شود.";};}
-  async function adminPanel(){if(profile?.role!=="admin")return;window.open21GameAccountModal("پنل مدیریت — درخواست‌های ژتون","<p>در حال بارگذاری...</p>");const r=await client.from("wallet_requests").select("id,user_id,request_type,amount,method,reference,status").eq("status","pending").order("created_at",{ascending:true}).limit(100);if(r.error){$("accountBody").textContent="خطا: "+r.error.message;return;}if(!r.data.length){$("accountBody").innerHTML="<p>درخواستی در انتظار بررسی نیست.</p>";return;} const userIds=[...new Set(r.data.map(x=>x.user_id))];const pr=await client.from("profiles").select("id,username,display_name").in("id",userIds);if(pr.error){$("accountBody").textContent="خطا در دریافت اطلاعات کاربران: "+pr.error.message;return;}const byId=Object.fromEntries((pr.data||[]).map(p=>[p.id,p]));r.data.forEach(x=>{x.profiles=byId[x.user_id]||null;}); $("accountBody").innerHTML=r.data.map(x=>'<article style="padding:12px;margin:10px 0;background:#0f1724;border-radius:12px"><strong>'+esc(x.profiles?.display_name||x.profiles?.username||"کاربر")+'</strong><p>'+(x.request_type==="chip_topup"?"شارژ ژتون":"برداشت ژتون")+' · '+Number(x.amount).toLocaleString("fa-IR")+' ژتون</p><p>روش: '+esc(x.method)+' · توضیح: '+esc(x.reference||"—")+'</p><button data-review="'+x.id+'" data-approve="true">تأیید</button> <button data-review="'+x.id+'" data-approve="false">رد درخواست</button></article>').join("");$("accountBody").querySelectorAll("[data-review]").forEach(b=>b.onclick=async()=>{b.disabled=true;const z=await client.rpc("admin_review_wallet_request",{p_request_id:b.dataset.review,p_approve:b.dataset.approve==="true",p_note:"بررسی از پنل مدیر"});if(z.error){alert("انجام نشد: "+z.error.message);b.disabled=false;return;}await adminPanel();await refreshProfile();});}
+  async function adminPanel(){
+    if(profile?.role!=="admin")return;
+    window.open21GameAccountModal("تنظیمات مدیریت","<p>در حال بارگذاری کاربران، میزها و درخواست‌ها...</p>");
+    const body=$("accountBody");
+    const [usersRes,tablesRes,requestsRes]=await Promise.all([
+      client.from("profiles").select("id,username,display_name,role,demo_chips,created_at").order("created_at",{ascending:false}).limit(200),
+      client.from("game_tables").select("id,stake,capacity,status").order("id"),
+      client.from("wallet_requests").select("id,user_id,request_type,amount,method,reference,status").eq("status","pending").order("created_at",{ascending:true}).limit(100)
+    ]);
+    if(usersRes.error||tablesRes.error||requestsRes.error){body.textContent="خطا: "+(usersRes.error||tablesRes.error||requestsRes.error).message;return;}
+    const users=usersRes.data||[],tables=tablesRes.data||[],reqs=requestsRes.data||[];
+    const names=Object.fromEntries(users.map(u=>[u.id,u.display_name||u.username]));
+    body.innerHTML='<h3>تنظیم میزها و مبالغ ژتون</h3>'+tables.map(t=>'<div class="settings-card"><strong>میز '+t.id+'</strong><label>مبلغ پایه ژتون</label><input type="number" min="1" id="stake-'+t.id+'" value="'+Number(t.stake)+'"><label>ظرفیت (۲ تا ۶ نفر)</label><select id="capacity-'+t.id+'">'+[2,3,4,5,6].map(n=>'<option value="'+n+'" '+(n===t.capacity?'selected':'')+'>'+n+' نفر</option>').join('')+'</select><label>وضعیت میز</label><select id="table-status-'+t.id+'"><option value="waiting" '+(t.status==="waiting"?'selected':'')+'>فعال</option><option value="maintenance" '+(t.status==="maintenance"?'selected':'')+'>غیرفعال / تعمیرات</option></select><button data-save-table="'+t.id+'">ذخیره تنظیم میز</button></div>').join('')+
+    '<h3>کاربران و موجودی ژتون</h3>'+users.map(u=>'<div class="user-row"><strong>'+esc(u.display_name||u.username)+'</strong><small>@'+esc(u.username)+' · '+esc(u.role)+' · موجودی: '+Number(u.demo_chips).toLocaleString("fa-IR")+'</small><label>تغییر موجودی (+ شارژ / − کسر)</label><input type="number" id="chip-adjust-'+u.id+'" placeholder="مثلاً 50000 یا -20000"><input id="chip-note-'+u.id+'" placeholder="دلیل تغییر موجودی"><button data-adjust-user="'+u.id+'">ثبت تغییر ژتون</button></div>').join('')+
+    '<h3>درخواست‌های ژتون در انتظار</h3>'+(reqs.length?reqs.map(x=>'<div class="user-row"><strong>'+esc(names[x.user_id]||"کاربر")+'</strong><p>'+(x.request_type==="chip_topup"?"شارژ":"برداشت")+' · '+Number(x.amount).toLocaleString("fa-IR")+' ژتون</p><small>'+esc(x.method)+' · '+esc(x.reference||"—")+'</small><button data-review="'+x.id+'" data-approve="true">تأیید</button> <button data-review="'+x.id+'" data-approve="false">رد</button></div>').join(''):'<p>درخواستی در انتظار نیست.</p>');
+    body.querySelectorAll("[data-save-table]").forEach(b=>b.onclick=async()=>{
+      const id=Number(b.dataset.saveTable),stake=Number($("stake-"+id).value),capacity=Number($("capacity-"+id).value),status=$("table-status-"+id).value;
+      if(!Number.isSafeInteger(stake)||stake<1){alert("مبلغ میز معتبر نیست.");return;}
+      b.disabled=true;const z=await client.rpc("admin_update_table",{p_table_id:id,p_stake:stake,p_capacity:capacity,p_status:status});b.disabled=false;
+      if(z.error){alert("ذخیره نشد: "+z.error.message);return;}await refreshOccupancy();await adminPanel();
+    });
+    body.querySelectorAll("[data-adjust-user]").forEach(b=>b.onclick=async()=>{
+      const id=b.dataset.adjustUser,amount=Number($("chip-adjust-"+id).value),note=$("chip-note-"+id).value.trim();
+      if(!Number.isSafeInteger(amount)||amount===0){alert("مبلغ تغییر ژتون را با علامت مثبت یا منفی وارد کنید.");return;}
+      b.disabled=true;const z=await client.rpc("admin_adjust_user_chips",{p_user_id:id,p_amount:amount,p_note:note});b.disabled=false;
+      if(z.error){alert("تغییر موجودی انجام نشد: "+z.error.message);return;}await adminPanel();await refreshProfile();
+    });
+    body.querySelectorAll("[data-review]").forEach(b=>b.onclick=async()=>{
+      b.disabled=true;const z=await client.rpc("admin_review_wallet_request",{p_request_id:b.dataset.review,p_approve:b.dataset.approve==="true",p_note:"بررسی از پنل مدیر"});
+      if(z.error){alert("انجام نشد: "+z.error.message);b.disabled=false;return;}await adminPanel();await refreshProfile();
+    });
+  }
+  async function profileSettings(){
+    if(!window.current21GameUser)return alert("ابتدا وارد حساب شوید.");
+    const p=window.current21GameUser;
+    window.open21GameAccountModal("تنظیمات حساب کاربری",'<div class="settings-card"><label>نام کاربری (۳ تا ۲۴ حرف انگلیسی، عدد یا زیرخط)</label><input id="profileUsername" maxlength="24" value="'+esc(p.username||"")+'"><label>نام نمایشی</label><input id="profileDisplayName" maxlength="40" value="'+esc(p.display_name||"")+'"><button id="saveProfileBtn">ذخیره تغییرات</button><p id="profileSaveStatus"></p></div>');
+    $("saveProfileBtn").onclick=async()=>{
+      const username=$("profileUsername").value.trim().toLowerCase(),display_name=$("profileDisplayName").value.trim();
+      const msg=$("profileSaveStatus");$("saveProfileBtn").disabled=true;msg.textContent="در حال ذخیره...";
+      const z=await client.rpc("user_update_profile",{p_username:username,p_display_name:display_name||null});$("saveProfileBtn").disabled=false;
+      if(z.error){msg.textContent="ذخیره نشد: "+z.error.message;return;}
+      profile=z.data;window.current21GameUser={...window.current21GameUser,...z.data};$("signedInName").textContent=z.data.display_name||z.data.username;
+      msg.textContent="تغییرات ذخیره شد.";
+      window.dispatchEvent(new CustomEvent("21game:profile-updated",{detail:window.current21GameUser}));
+    };
+  }
   async function init(){const url=window.SUPABASE_URL,key=window.SUPABASE_ANON_KEY;if(!window.supabase||!url||!key||url.includes("YOUR_SUPABASE")||key.includes("YOUR_SUPABASE")){status("تنظیم Supabase هنوز انجام نشده است. فایل SUPABASE_SETUP.md را دنبال کنید.",true);return;}client=window.supabase.createClient(url,key);window.supabase21Game=client;const r=await client.auth.getSession();if(r.error){status(r.error.message,true);return;}if(r.data.session){try{await loadProfile(r.data.session.user);}catch(e){status("پروفایل پیدا نشد. schema.sql را در Supabase اجرا کنید.",true);}}client.auth.onAuthStateChange(async(_ev,s)=>{if(s&&!window.current21GameUser){try{await loadProfile(s.user);}catch(e){status(e.message,true);}}});}
   window.open21GameAccountModal=(title,body)=>{$("accountTitle").textContent=title;$("accountBody").innerHTML=body;$("accountModal").classList.remove("hidden");};
-  window.addEventListener("DOMContentLoaded",()=>{$("authForm").addEventListener("submit",submitAuth);$("authModeToggle").addEventListener("click",()=>setMode(!isSignup));$("signOutBtn").addEventListener("click",async()=>{if(client)await client.auth.signOut();profile=null;window.current21GameUser=null;$("signedInName").textContent="مهمان";$("signOutBtn").classList.add("hidden");$("adminPanelBtn").classList.add("hidden");setWallet(0);$("authGate").classList.remove("auth-hidden");setMode(false);});$("chipRequestBtn").addEventListener("click",()=>requestForm("chip_topup"));$("withdrawBtn").addEventListener("click",()=>requestForm("withdrawal"));$("adminPanelBtn").addEventListener("click",adminPanel);$("balanceBtn").addEventListener("click",()=>requestForm("chip_topup"));init();});
+  window.addEventListener("DOMContentLoaded",()=>{$("authForm").addEventListener("submit",submitAuth);$("authModeToggle").addEventListener("click",()=>setMode(!isSignup));$("signOutBtn").addEventListener("click",async()=>{if(client)await client.auth.signOut();profile=null;window.current21GameUser=null;$("signedInName").textContent="مهمان";$("signOutBtn").classList.add("hidden");$("adminPanelBtn").classList.add("hidden");setWallet(0);$("authGate").classList.remove("auth-hidden");setMode(false);});$("chipRequestBtn").addEventListener("click",()=>requestForm("chip_topup"));$("withdrawBtn").addEventListener("click",()=>requestForm("withdrawal"));$("adminPanelBtn").addEventListener("click",adminPanel);$("profileSettingsBtn").addEventListener("click",profileSettings);$("balanceBtn").addEventListener("click",()=>requestForm("chip_topup"));init();});
 })();
 /* Live lobby, private hand display, shared chat and WebRTC voice. */
 (function(){
@@ -20,7 +65,7 @@
   let channel=null, chatChannel=null, voiceChannel=null, seatedTable=null;
   let voiceEnabled=false, localStream=null, shownAskechiRound=null, askechiVisibleUntil=0;
   const peers=new Map(), audioEls=new Map();
-  const stakes=[20000,30000,40000,50000,50000,60000,70000,80000,90000,100000];
+  let stakes=[20000,30000,40000,50000,50000,60000,70000,80000,90000,100000];\n  let tableStatuses=Array(10).fill("waiting");
   function cash(n){return Number(n||0).toLocaleString("fa-IR");}
   function escapeHtml(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");}
   function cardHtml(card,small=false){
@@ -75,7 +120,7 @@
     $("closeBankBtn").style.display=isMyTurn&&game?.is_banker?"inline-block":"none";
     $("nextPlayerBtn").style.display="none";$("nextRoundBtn").style.display="none";
   }
-  async function loadChat(){
+  let lastChatIds=new Set(),hasUnreadChat=false;\n  async function loadChat(){
     const client=window.supabase21Game;if(!client||!seatedTable)return;
     const {data,error}=await client.from("table_chat").select("id,user_id,message,created_at").eq("table_id",seatedTable).order("created_at",{ascending:true}).limit(100);
     if(error){$("chatMessages").textContent="پیام‌ها بارگذاری نشد: "+error.message;return;}
@@ -112,7 +157,7 @@
     pc.ontrack=e=>{
       let audio=audioEls.get(id);
       if(!audio){audio=document.createElement("audio");audio.autoplay=true;audio.playsInline=true;audio.style.display="none";$("chatPanel").appendChild(audio);audioEls.set(id,audio);}
-      audio.srcObject=e.streams[0];audio.play().catch(()=>{});
+      audio.srcObject=e.streams[0];audio.muted=false;audio.volume=1;audio.play().catch(()=>{$("voiceNote").textContent="اتصال برقرار شده اما پخش صدا مسدود است؛ روی صفحه کلیک کنید و صدای مرورگر را بررسی کنید.";});
     };
     pc.onconnectionstatechange=()=>{if(["failed","closed"].includes(pc.connectionState))closePeer(id);};
     if(offerer){const offer=await pc.createOffer();await pc.setLocalDescription(offer);await sendVoiceSignal(id,{kind:"offer",sdp:pc.localDescription});}
@@ -149,7 +194,7 @@
     try{
       localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});voiceEnabled=true;
       $("voiceBtn").classList.add("active");$("voiceBtn").textContent="🎙 قطع وویس";
-      $("voiceNote").textContent="میکروفون فعال است؛ برای صدای دیگران اجازهٔ پخش صدا را بدهید.";
+      $("voiceNote").textContent="میکروفون فعال شد؛ در انتظار اتصال بازیکنان دیگر...";
       const {data}=await window.supabase21Game.from("table_seats").select("user_id").eq("table_id",seatedTable);
       for(const row of data||[])if(row.user_id!==window.current21GameUser.id)await sendVoiceSignal(row.user_id,{kind:"hello"});
     }catch(e){voiceEnabled=false;if(localStream)localStream.getTracks().forEach(t=>t.stop());localStream=null;alert("فعال‌سازی میکروفون انجام نشد: "+e.message);}
@@ -164,7 +209,7 @@
       .on("postgres_changes",{event:"*",schema:"public",table:"table_public_state",filter:"table_id=eq."+tableId},()=>renderLobby(i).catch(console.error))
       .subscribe();
     chatChannel=client.channel("table-chat-"+tableId)
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"table_chat",filter:"table_id=eq."+tableId},loadChat).subscribe();
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"table_chat",filter:"table_id=eq."+tableId},payload=>{if(payload.new?.user_id!==window.current21GameUser?.id&&$("chatPanel").classList.contains("hidden")){$("chatUnreadDot").classList.remove("hidden");hasUnreadChat=true;}loadChat();}).subscribe();
     voiceChannel=client.channel("voice-table-"+tableId)
       .on("broadcast",{event:"signal"},({payload})=>handleVoiceSignal(payload)).subscribe();
     await loadChat();
@@ -195,7 +240,7 @@
   async function sendGameAction(action){
     const client=window.supabase21Game;if(!client||!seatedTable)return;
     const {data,error}=await client.rpc("game_action",{p_table_id:seatedTable,p_action:action});
-    if(error){alert("خطای بازی: "+error.message);return;}
+    if(error){alert("خطای بازی: "+error.message);return;}\n    if(action==="start")await refreshProfile();
     await renderLobby(seatedTable-1);if(data?.message)$("status").textContent=data.message;
     if(action==="pause")$("modal").classList.add("hidden");
   }
@@ -218,7 +263,9 @@
     $("closeBankBtn").addEventListener("click",()=>sendGameAction("close"));
     $("pauseOnlineTable").textContent="خروج موقت";
     $("pauseOnlineTable").addEventListener("click",()=>sendGameAction("pause"));
-    $("chatBtn").onclick=()=>{$("chatPanel").classList.toggle("hidden");if(!$("chatPanel").classList.contains("hidden"))loadChat();};
+    $("chatBtn").onclick=()=>{$("chatPanel").classList.toggle("hidden");if(!$("chatPanel").classList.contains("hidden")){$("chatUnreadDot").classList.add("hidden");hasUnreadChat=false;loadChat();}};
+    $("stickerBtn").onclick=()=>$("stickerPicker").classList.toggle("hidden");
+    $("stickerPicker").querySelectorAll("[data-sticker]").forEach(b=>b.onclick=()=>{$("chatInput").value+=b.dataset.sticker;$("chatInput").focus();});
     $("sendChat").onclick=sendChat;
     $("chatInput").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();sendChat();}});
     $("voiceBtn").onclick=toggleVoice;
