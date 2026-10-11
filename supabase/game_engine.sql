@@ -311,7 +311,7 @@ begin
     'revealed_hands',case when ps.status='settled' then coalesce((select jsonb_object_agg(k,v) from jsonb_each(coalesce((select hands from public.table_private_state where table_id=p_table_id),'{}'::jsonb)) as e(k,v)),'{}'::jsonb) else '{}'::jsonb end,
     'phase',coalesce(gs->>'phase','waiting'),
     'status',coalesce(ps.status,'waiting'),'banker_user_id',ps.banker_user_id,'active_user_id',ps.active_user_id,
-    'bank_amount',ps.bank_amount,'round_no',ps.round_no,'message',ps.public_message,'is_banker',ps.banker_user_id=uid,'askechi_cards',coalesce(gs->'askechi_cards','[]'::jsonb));
+    'bank_amount',ps.bank_amount,'round_no',ps.round_no,'message',ps.public_message,'is_banker',ps.banker_user_id=uid,'banker_hands_played',coalesce((gs->>'banker_hands_played')::integer,0),'askechi_cards',coalesce(gs->'askechi_cards','[]'::jsonb));
 end;
 $$;
 
