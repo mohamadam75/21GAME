@@ -78,9 +78,9 @@ begin
       cross join (values ('♠'),('♥'),('♦'),('♣')) s(suit)
     ) x;
 
-    -- As-keshi: deal in seat order until a player receives an Ace.
+    -- As-keshi: deal in seat order until a player receives an Ace; keep the dealt cards public for the animation.
     v_hands := '{}'::jsonb;
-    gs := jsonb_build_object('phase','askechi','cursor',0,'round_no',coalesce(ps.round_no,0)+1,'message','آس‌کشی');
+    gs := jsonb_build_object('phase','askechi','cursor',0,'round_no',coalesce(ps.round_no,0)+1,'message','آس‌کشی','askechi_cards','[]'::jsonb);
     banker := null;
     i := 0;
     while banker is null loop
@@ -89,6 +89,7 @@ begin
       card := v_deck->0;
       v_deck := v_deck - 0;
       v_hands := jsonb_set(v_hands,array[active::text],coalesce(v_hands->active::text,'[]'::jsonb) || jsonb_build_array(card),true);
+      gs := jsonb_set(gs,'{askechi_cards}',coalesce(gs->'askechi_cards','[]'::jsonb) || jsonb_build_array(jsonb_build_object('user_id',active,'card',card)),true);
       i := i+1;
       if card->>'rank'='A' then banker := active; end if;
     end loop;
@@ -116,7 +117,11 @@ begin
     if next_uid=banker then
       select user_id into next_uid from public.table_seats where table_id=p_table_id and user_id<>banker order by seat_no limit 1;
     end if;
-    gs := jsonb_build_object('phase','player_turn','round_no',coalesce(ps.round_no,0)+1,'banker_turn',false,'used_cards',0,'paused_users','[]'::jsonb);
+    gs := jsonb_set(gs,'{phase}','"player_turn"'::jsonb,true);
+    gs := jsonb_set(gs,'{banker_turn}','false'::jsonb,true);
+    gs := jsonb_set(gs,'{used_cards}','0'::jsonb,true);
+    gs := jsonb_set(gs,'{paused_users}','[]'::jsonb,true);
+    gs := jsonb_set(gs,'{current_opponent}',to_jsonb(next_uid::text),true);
     update public.table_private_state set deck=v_deck,hands=v_hands,game_state=gs,updated_at=now() where table_id=p_table_id;
     update public.table_public_state set status='playing',banker_user_id=banker,active_user_id=next_uid,
       bank_amount=stake_amount*3,round_no=coalesce(ps.round_no,0)+1,public_message='بانکدار انتخاب شد؛ نوبت بازیکن بعد از بانکدار است',updated_at=now()
@@ -222,7 +227,7 @@ begin
   select coalesce(sum((x->>'value')::integer),0) into total from jsonb_array_elements(h) x;
   return jsonb_build_object('my_hand',h,'my_score',coalesce(total,0),'phase',coalesce(gs->>'phase','waiting'),
     'status',coalesce(ps.status,'waiting'),'banker_user_id',ps.banker_user_id,'active_user_id',ps.active_user_id,
-    'bank_amount',ps.bank_amount,'message',ps.public_message,'is_banker',ps.banker_user_id=uid);
+    'bank_amount',ps.bank_amount,'message',ps.public_message,'is_banker',ps.banker_user_id=uid,'askechi_cards',coalesce(priv.game_state->'askechi_cards','[]'::jsonb));
 end;
 $$;
 
