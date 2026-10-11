@@ -81,6 +81,7 @@
       if(channel){await client.removeChannel(channel);channel=null;}
       channel=client.channel("table-seats-"+seatedTable)
         .on("postgres_changes",{event:"*",schema:"public",table:"table_seats",filter:"table_id=eq."+seatedTable},()=>renderLobby(i).catch(console.error))
+        .on("postgres_changes",{event:"*",schema:"public",table:"table_public_state",filter:"table_id=eq."+seatedTable},()=>renderLobby(i).catch(console.error))
         .subscribe();
       $("modalTitle").textContent="میز "+(i+1);
       $("modal").classList.remove("hidden");
