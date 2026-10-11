@@ -8,7 +8,7 @@
   async function loadProfile(user){const r=await client.from("profiles").select("id,username,display_name,role,demo_chips").eq("id",user.id).single();if(r.error)throw r.error;profile=r.data;window.current21GameUser={id:user.id,email:user.email,...profile};$("signedInName").textContent=profile.display_name||profile.username;$("signOutBtn").classList.remove("hidden");$("authGate").classList.add("auth-hidden");$("adminPanelBtn").classList.toggle("hidden",profile.role!=="admin");setWallet(profile.demo_chips);window.dispatchEvent(new CustomEvent("21game:authenticated",{detail:window.current21GameUser}));}
   async function refreshProfile(){if(window.current21GameUser)await loadProfile({id:window.current21GameUser.id,email:window.current21GameUser.email});}
   async function submitAuth(e){e.preventDefault();if(!client)return status("تنظیم Supabase کامل نیست؛ فایل SUPABASE_SETUP.md را دنبال کنید.",true);const email=$("authEmail").value.trim(),password=$("authPassword").value;$("authSubmit").disabled=true;status(isSignup?"در حال ساخت حساب...":"در حال ورود...");try{if(isSignup){const username=$("authUsername").value.trim().toLowerCase();if(!/^[a-z0-9_]{3,24}$/.test(username))throw Error("نام کاربری باید ۳ تا ۲۴ حرف انگلیسی، عدد یا زیرخط باشد.");const r=await client.auth.signUp({email,password,options:{data:{username,display_name:username}}});if(r.error)throw r.error;if(!r.data.session){status("حساب ساخته شد. ایمیل تأیید را بررسی کنید؛ سپس وارد شوید.");return;}await loadProfile(r.data.user);}else{const r=await client.auth.signInWithPassword({email,password});if(r.error)throw r.error;await loadProfile(r.data.user);}}catch(err){status(err.message||"عملیات انجام نشد.",true);}finally{$("authSubmit").disabled=false;}}
-  function requestForm(type){if(!window.current21GameUser){alert("ابتدا وارد حساب شوید.");return;}const wd=type==="withdrawal";const body=['<p>'+(wd?"درخواست برداشت ژتون آزمایشی":"درخواست شارژ ژتون آزمایشی")+'</p>','<p>موجودی: <strong>'+Number(profile?.demo_chips||0).toLocaleString("fa-IR")+' ژتون</strong></p>','<label>مبلغ ژتون</label><input id="reqAmount" type="number" min="1" step="1" placeholder="مبلغ" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">',wd?'<input id="reqRef" placeholder="توضیح درخواست" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">':'<label>روش درخواست</label><select id="reqMethod" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff"><option value="card_transfer">کارت به کارت (بررسی دستی)</option><option value="voucher">ووچر (بررسی دستی)</option><option value="manual">هماهنگی با مدیر</option></select><input id="reqRef" placeholder="شماره پیگیری یا توضیح" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">','<p style="font-size:12px;color:#9fb0c6">این نسخه فقط ژتون آزمایشی ثبت می‌کند؛ پرداخت واقعی انجام نمی‌شود.</p><button id="reqSubmit">ثبت درخواست</button><p id="reqStatus"></p>'].join("");window.open21GameAccountModal(wd?"درخواست برداشت ژتون":"درخواست شارژ ژتون",body);$("reqSubmit").onclick=async()=>{const amount=Number($("reqAmount").value),ref=$("reqRef").value.trim(),method=wd?"manual":$("reqMethod").value,msg=$("reqStatus");if(!Number.isSafeInteger(amount)||amount<=0){msg.textContent="مبلغ معتبر وارد کنید.";return;}if(wd&&amount>Number(profile?.demo_chips||0)){msg.textContent="موجودی ژتون کافی نیست.";return;}msg.textContent="در حال ثبت...";$("reqSubmit").disabled=true;const r=await client.from("wallet_requests").insert({user_id:window.current21GameUser.id,request_type:type,amount,method,reference:ref||null});$("reqSubmit").disabled=false;if(r.error){msg.textContent="ثبت نشد: "+r.error.message;return;}msg.textContent="درخواست ثبت شد و پس از بررسی مدیر نتیجه اعلام می‌شود.";};}
+  function requestForm(type){if(!window.current21GameUser){alert("ابتدا وارد حساب شوید.");return;}const wd=type==="withdrawal";const body=['<p>'+(wd?"درخواست برداشت ژتون آزمایشی":"درخواست شارژ ژتون آزمایشی")+'</p>','<p>موجودی: <strong>'+Number(profile?.demo_chips||0).toLocaleString("fa-IR")+' ژتون</strong></p>','<label>مبلغ ژتون</label><input id="reqAmount" type="number" min="1" step="1" placeholder="مبلغ" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">',wd?'<input id="reqRef" placeholder="توضیح درخواست" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">':'<label>روش درخواست</label><select id="reqMethod" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff"><option value="card_transfer">کارت به کارت (بررسی دستی)</option><option value="voucher">ووچر (بررسی دستی)</option><option value="manual">هماهنگی با مدیر</option></select><label id="proofLabel" class="hidden">عکس رسید کارت‌به‌کارت (حداکثر ۵ مگابایت)</label><input id="reqProof" class="hidden" type="file" accept="image/png,image/jpeg,image/webp" style="width:100%;padding:10px;margin:8px 0;color:#fff"><input id="reqRef" placeholder="شماره پیگیری یا توضیح" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">','<p style="font-size:12px;color:#9fb0c6">این نسخه فقط ژتون آزمایشی ثبت می‌کند؛ پرداخت واقعی انجام نمی‌شود.</p><button id="reqSubmit">ثبت درخواست</button><p id="reqStatus"></p>'].join("");window.open21GameAccountModal(wd?"درخواست برداشت ژتون":"درخواست شارژ ژتون",body);if(!wd){const method=$("reqMethod"),label=$("proofLabel"),file=$("reqProof");const toggle=()=>{const show=method.value==="card_transfer";label.classList.toggle("hidden",!show);file.classList.toggle("hidden",!show);};method.addEventListener("change",toggle);toggle();}$("reqSubmit").onclick=async()=>{const amount=Number($("reqAmount").value),ref=$("reqRef").value.trim(),method=wd?"manual":$("reqMethod").value,file=!wd&&method==="card_transfer"?$("reqProof").files[0]:null,msg=$("reqStatus");if(!Number.isSafeInteger(amount)||amount<=0){msg.textContent="مبلغ معتبر وارد کنید.";return;}if(wd&&amount>Number(profile?.demo_chips||0)){msg.textContent="موجودی ژتون کافی نیست.";return;}if(!wd&&method==="card_transfer"&&!file){msg.textContent="لطفاً عکس رسید کارت‌به‌کارت را انتخاب کنید.";return;}if(file&&(!/^image\/(png|jpeg|webp)$/.test(file.type)||file.size>5*1024*1024)){msg.textContent="فقط عکس PNG/JPG/WEBP تا ۵ مگابایت مجاز است.";return;}msg.textContent="در حال ثبت...";$("reqSubmit").disabled=true;let proof_path=null;try{if(file){proof_path=window.current21GameUser.id+"/"+Date.now()+"-"+file.name.replace(/[^a-zA-Z0-9._-]/g,"_");const up=await client.storage.from("payment-proofs").upload(proof_path,file,{contentType:file.type,upsert:false});if(up.error)throw up.error;}const payload={user_id:window.current21GameUser.id,request_type:type,amount,method,reference:ref||null};if(proof_path)payload.proof_path=proof_path;const r=await client.from("wallet_requests").insert(payload);if(r.error)throw r.error;msg.textContent="درخواست ثبت شد و پس از بررسی مدیر نتیجه اعلام می‌شود.";}catch(e){msg.textContent="ثبت نشد: "+(e.message||e);if(proof_path)await client.storage.from("payment-proofs").remove([proof_path]);}finally{$("reqSubmit").disabled=false;}};}
   async function adminPanel(){
     if(profile?.role!=="admin")return;
     window.open21GameAccountModal("تنظیمات مدیریت","<p>در حال بارگذاری کاربران، میزها و درخواست‌ها...</p>");
@@ -16,14 +16,15 @@
     const [usersRes,tablesRes,requestsRes]=await Promise.all([
       client.from("profiles").select("id,username,display_name,role,demo_chips,created_at").order("created_at",{ascending:false}).limit(200),
       client.from("game_tables").select("id,stake,capacity,status").order("id"),
-      client.from("wallet_requests").select("id,user_id,request_type,amount,method,reference,status").eq("status","pending").order("created_at",{ascending:true}).limit(100)
+      client.from("wallet_requests").select("id,user_id,request_type,amount,method,reference,proof_path,status").eq("status","pending").order("created_at",{ascending:true}).limit(100)
     ]);
     if(usersRes.error||tablesRes.error||requestsRes.error){body.textContent="خطا: "+(usersRes.error||tablesRes.error||requestsRes.error).message;return;}
     const users=usersRes.data||[],tables=tablesRes.data||[],reqs=requestsRes.data||[];
     const names=Object.fromEntries(users.map(u=>[u.id,u.display_name||u.username]));
+     for(const req of reqs){if(req.proof_path){const signed=await client.storage.from("payment-proofs").createSignedUrl(req.proof_path,3600);const host=$("proof-"+req.id);if(host&&!signed.error)host.innerHTML='<a target="_blank" rel="noopener" href="'+esc(signed.data.signedUrl)+'">مشاهده عکس رسید</a><br><img class="payment-proof-preview" src="'+esc(signed.data.signedUrl)+'" alt="رسید پرداخت">';}}
     body.innerHTML='<h3>تنظیم میزها و مبالغ ژتون</h3>'+tables.map(t=>'<div class="settings-card"><strong>میز '+t.id+'</strong><label>مبلغ پایه ژتون</label><input type="number" min="1" id="stake-'+t.id+'" value="'+Number(t.stake)+'"><label>ظرفیت (۲ تا ۶ نفر)</label><select id="capacity-'+t.id+'">'+[2,3,4,5,6].map(n=>'<option value="'+n+'" '+(n===t.capacity?'selected':'')+'>'+n+' نفر</option>').join('')+'</select><label>وضعیت میز</label><select id="table-status-'+t.id+'"><option value="waiting" '+(t.status==="waiting"?'selected':'')+'>فعال</option><option value="maintenance" '+(t.status==="maintenance"?'selected':'')+'>غیرفعال / تعمیرات</option></select><button data-save-table="'+t.id+'">ذخیره تنظیم میز</button></div>').join('')+
     '<h3>کاربران و موجودی ژتون</h3>'+users.map(u=>'<div class="user-row"><strong>'+esc(u.display_name||u.username)+'</strong><small>@'+esc(u.username)+' · '+esc(u.role)+' · موجودی: '+Number(u.demo_chips).toLocaleString("fa-IR")+'</small><label>تغییر موجودی (+ شارژ / − کسر)</label><input type="number" id="chip-adjust-'+u.id+'" placeholder="مثلاً 50000 یا -20000"><input id="chip-note-'+u.id+'" placeholder="دلیل تغییر موجودی"><button data-adjust-user="'+u.id+'">ثبت تغییر ژتون</button></div>').join('')+
-    '<h3>درخواست‌های ژتون در انتظار</h3>'+(reqs.length?reqs.map(x=>'<div class="user-row"><strong>'+esc(names[x.user_id]||"کاربر")+'</strong><p>'+(x.request_type==="chip_topup"?"شارژ":"برداشت")+' · '+Number(x.amount).toLocaleString("fa-IR")+' ژتون</p><small>'+esc(x.method)+' · '+esc(x.reference||"—")+'</small><button data-review="'+x.id+'" data-approve="true">تأیید</button> <button data-review="'+x.id+'" data-approve="false">رد</button></div>').join(''):'<p>درخواستی در انتظار نیست.</p>');
+    '<h3>درخواست‌های ژتون در انتظار</h3>'+(reqs.length?reqs.map(x=>'<div class="user-row"><strong>'+esc(names[x.user_id]||"کاربر")+'</strong><p>'+(x.request_type==="chip_topup"?"شارژ":"برداشت")+' · '+Number(x.amount).toLocaleString("fa-IR")+' ژتون</p><small>'+esc(x.method)+' · '+esc(x.reference||"—")+'</small><div id="proof-'+x.id+'"></div><button data-review="'+x.id+'" data-approve="true">تأیید</button> <button data-review="'+x.id+'" data-approve="false">رد</button></div>').join(''):'<p>درخواستی در انتظار نیست.</p>');
     body.querySelectorAll("[data-save-table]").forEach(b=>b.onclick=async()=>{
       const id=Number(b.dataset.saveTable),stake=Number($("stake-"+id).value),capacity=Number($("capacity-"+id).value),status=$("table-status-"+id).value;
       if(!Number.isSafeInteger(stake)||stake<1){alert("مبلغ میز معتبر نیست.");return;}
@@ -62,7 +63,7 @@
 /* Live lobby, private hand display, shared chat and WebRTC voice. */
 (function(){
   const $=id=>document.getElementById(id);
-  let channel=null, chatChannel=null, voiceChannel=null, seatedTable=null;
+  let channel=null, chatChannel=null, voiceChannel=null, seatedTable=null, actionInFlight=false;
   let voiceEnabled=false, localStream=null, shownAskechiRound=null, askechiVisibleUntil=0;
   const peers=new Map(), audioEls=new Map();
   let stakes=[20000,30000,40000,50000,50000,60000,70000,80000,90000,100000];
@@ -85,7 +86,7 @@
   }
   async function renderLobby(tableIndex){
     const client=window.supabase21Game, tableId=tableIndex+1;
-    const {data,error}=await client.from("table_seats").select("seat_no,user_id,profiles(username,display_name)").eq("table_id",tableId).order("seat_no");
+    const {data,error}=await client.from("table_seats").select("seat_no,user_id,profiles(username,display_name,demo_chips)").eq("table_id",tableId).order("seat_no");
     if(error)throw error;
     const seats=data||[];
     const {data:game,error:gameError}=await client.rpc("game_my_hand",{p_table_id:tableId});
@@ -98,7 +99,7 @@
     const showAskechi=Date.now()<askechiVisibleUntil;
     $("seats").innerHTML=Array.from({length:6},(_,i)=>{
       const p=seats.find(s=>s.seat_no===i+1);
-      if(!p)return '<div class="seat s'+i+'"><div class="avatar">＋</div><div class="name">صندلی خالی</div><div class="tag"></div><div class="cards"></div></div>';
+      if(!p)return '<div class="seat s'+i+'"><div class="avatar">＋</div><div class="name">صندلی خالی</div><div class="tag"></div><div class="cards"></div><div class="seat-balance">—</div></div>';
       const isMe=p.user_id===me, isBanker=!gameError&&game?.banker_user_id===p.user_id;
       const isActive=!gameError&&game?.active_user_id===p.user_id;
       const name=escapeHtml(p.profiles?.display_name||p.profiles?.username||"بازیکن");
@@ -106,7 +107,7 @@
       const privateCards=isMe&&!gameError?(game?.my_hand||[]).map(x=>cardHtml(x,true)).join(""):"";
       const revealedCards=game?.status==="settled"?(game?.revealed_hands?.[p.user_id]||[]).map(x=>cardHtml(x,true)).join(""):"";
       const shownCards=initialCards || revealedCards || privateCards || (game?.status==="playing"&&!isMe?'<span class="card-back playing-card"></span>':"");
-      return '<div class="seat s'+i+' '+(isMe?"active ":"")+(isBanker?"banker ":"")+(isActive?"turn-active":"")+'"><div class="avatar">'+(isBanker?"👑":"👤")+'</div><div class="name">'+name+'</div><div class="tag">'+(isBanker?"بانکدار":isMe?"شما":isActive?"نوبت بازی":"بازیکن")+'</div><div class="cards">'+shownCards+'</div></div>';
+      return '<div class="seat s'+i+' '+(isMe?"active ":"")+(isBanker?"banker ":"")+(isActive?"turn-active":"")+'"><div class="avatar">'+(isBanker?"👑":"👤")+'</div><div class="name">'+name+'</div><div class="tag">'+(isBanker?"بانکدار":isMe?"شما":isActive?"نوبت بازی":"بازیکن")+'</div><div class="cards">'+shownCards+'</div><div class="seat-balance">موجودی: '+cash(p.profiles?.demo_chips||0)+' ژتون</div></div>';
     }).join("");
     const statusText=gameError?"خطای دریافت وضعیت بازی: "+gameError.message:(game?.message||"در انتظار شروع بازی");
     $("status").textContent=statusText;
@@ -243,18 +244,25 @@
     }catch(e){alert("ورود به میز انجام نشد: "+(e.message||e));}
   }
   async function sendGameAction(action){
-    const client=window.supabase21Game;if(!client||!seatedTable)return;
-    const {data,error}=await client.rpc("game_action",{p_table_id:seatedTable,p_action:action});
-    if(error){alert("خطای بازی: "+error.message);return;}
-    await refreshProfile();
-    await renderLobby(seatedTable-1);if(data?.message)$("status").textContent=data.message;
-    if(action==="pause")$("modal").classList.add("hidden");
+    const client=window.supabase21Game;if(!client||!seatedTable||actionInFlight)return;
+    actionInFlight=true;
+    const actionButtons=["startGameBtn","drawCardBtn","standBtn","closeBankBtn"];
+    actionButtons.forEach(id=>{const el=$(id);if(el)el.disabled=true;});
+    try{
+      const tableAtStart=seatedTable;
+      const {data,error}=await client.rpc("game_action",{p_table_id:tableAtStart,p_action:action});
+      if(error){alert("خطای بازی: "+error.message);return;}
+      await refreshProfile();
+      if(seatedTable===tableAtStart){await renderLobby(tableAtStart-1);if(data?.message)$("status").textContent=data.message;}
+      if(action==="pause")$("modal").classList.add("hidden");
+    }catch(e){alert("خطای بازی: "+(e.message||e));}
+    finally{actionInFlight=false;actionButtons.forEach(id=>{const el=$(id);if(el)el.disabled=false;});if(seatedTable)renderLobby(seatedTable-1).catch(console.error);}
   }
   async function leaveOnlineTable(){
     const client=window.supabase21Game,user=window.current21GameUser;if(!client||!user||!seatedTable)return;
     const tableId=seatedTable;
     if(voiceEnabled)await toggleVoice();
-    const {error}=await client.from("table_seats").delete().eq("table_id",tableId).eq("user_id",user.id);
+    const {error}=await client.rpc("game_leave_table",{p_table_id:tableId});
     if(error){alert("ترک میز انجام نشد: "+error.message);return;}
     for(const ch of [channel,chatChannel,voiceChannel])if(ch)await client.removeChannel(ch);
     channel=null;chatChannel=null;voiceChannel=null;seatedTable=null;
