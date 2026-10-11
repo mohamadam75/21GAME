@@ -183,7 +183,7 @@ begin
           update public.profiles set demo_chips=demo_chips+t.stake where id=uid;
           insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by)
             values(uid,t.stake,'game_win','برد با ۲۱ در میز '||p_table_id,banker);
-          update public.table_public_state set status='settled',active_user_id=null,public_message='بازیکن به ۲۱ رسید؛ این دست برد',bank_amount=greatest(0,bank_amount-t.stake),updated_at=now() where table_id=p_table_id;
+          update public.table_public_state as state set status='settled',active_user_id=null,public_message='بازیکن به ۲۱ رسید؛ این دست برد',bank_amount=greatest(0,state.bank_amount-t.stake),updated_at=now() where state.table_id=p_table_id;
         end if;
       end if;
     elsif p_action='stand' then
@@ -202,12 +202,13 @@ begin
           update public.profiles set demo_chips=demo_chips+t.stake where id=(gs->>'current_opponent')::uuid;
           insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by)
             values((gs->>'current_opponent')::uuid,t.stake,'game_win','برد در برابر بانکدار در میز '||p_table_id,banker);
-          update public.table_public_state set bank_amount=greatest(0,bank_amount-t.stake) where table_id=p_table_id;
+          update public.table_public_state as state set bank_amount=greatest(0,state.bank_amount-t.stake) where state.table_id=p_table_id;
         end if;
       else
         if opponent_score=my_score then result_text:='مساوی؛ بانکدار برنده شد';
         elsif opponent_score>21 then result_text:='بازیکن از ۲۱ عبور کرد؛ بانکدار برنده شد';
         else result_text:='بانکدار برنده شد'; end if;
+        update public.table_public_state as state set bank_amount=state.bank_amount+t.stake where state.table_id=p_table_id;
       end if;
       gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
       update public.table_public_state set status='settled',active_user_id=null,public_message=result_text,updated_at=now() where table_id=p_table_id;
@@ -255,3 +256,41 @@ revoke all on function public.game_action(integer,text) from public;
 revoke all on function public.game_my_hand(integer) from public;
 grant execute on function public.game_action(integer,text) to authenticated;
 grant execute on function public.game_my_hand(integer) to authenticated;
+
+
+-- Leaving a table clears its current hand so a rejoining player never resumes stale cards.
+create or replace function public.game_leave_table(p_table_id integer)
+returns jsonb
+language plpgsql
+security definer
+set search_path=public
+as $$
+declare
+  uid uuid:=auth.uid();
+  ps public.table_public_state;
+begin
+  if uid is null then raise exception 'login_required'; end if;
+  perform 1 from public.game_tables where id=p_table_id for update;
+  if not found then raise exception 'table_not_found'; end if;
+  if not exists(select 1 from public.table_seats where table_id=p_table_id and user_id=uid) then
+    raise exception 'not_seated_at_table';
+  end if;
+  select * into ps from public.table_public_state where table_id=p_table_id for update;
+  if found and ps.banker_user_id is not null and ps.bank_amount>0 then
+    update public.profiles set demo_chips=demo_chips+ps.bank_amount where id=ps.banker_user_id;
+    insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by)
+    values(ps.banker_user_id,ps.bank_amount,'refund','بازگشت بانک هنگام خروج از میز '||p_table_id,uid);
+  end if;
+  update public.table_public_state
+    set status='waiting',banker_user_id=null,active_user_id=null,bank_amount=0,
+        public_message='میز خالی شد؛ برای شروع دست جدید آماده است',updated_at=now()
+    where table_id=p_table_id;
+  update public.table_private_state
+    set deck='[]'::jsonb,hands='{}'::jsonb,game_state='{}'::jsonb,updated_at=now()
+    where table_id=p_table_id;
+  delete from public.table_seats where table_id=p_table_id and user_id=uid;
+  return jsonb_build_object('ok',true,'table_id',p_table_id);
+end;
+$$;
+revoke all on function public.game_leave_table(integer) from public;
+grant execute on function public.game_leave_table(integer) to authenticated;
