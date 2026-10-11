@@ -65,7 +65,8 @@
   let channel=null, chatChannel=null, voiceChannel=null, seatedTable=null;
   let voiceEnabled=false, localStream=null, shownAskechiRound=null, askechiVisibleUntil=0;
   const peers=new Map(), audioEls=new Map();
-  let stakes=[20000,30000,40000,50000,50000,60000,70000,80000,90000,100000];\n  let tableStatuses=Array(10).fill("waiting");
+  let stakes=[20000,30000,40000,50000,50000,60000,70000,80000,90000,100000];
+  let tableStatuses=Array(10).fill("waiting");
   function cash(n){return Number(n||0).toLocaleString("fa-IR");}
   function escapeHtml(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");}
   function cardHtml(card,small=false){
@@ -120,7 +121,8 @@
     $("closeBankBtn").style.display=isMyTurn&&game?.is_banker?"inline-block":"none";
     $("nextPlayerBtn").style.display="none";$("nextRoundBtn").style.display="none";
   }
-  let lastChatIds=new Set(),hasUnreadChat=false;\n  async function loadChat(){
+  let lastChatIds=new Set(),hasUnreadChat=false;
+  async function loadChat(){
     const client=window.supabase21Game;if(!client||!seatedTable)return;
     const {data,error}=await client.from("table_chat").select("id,user_id,message,created_at").eq("table_id",seatedTable).order("created_at",{ascending:true}).limit(100);
     if(error){$("chatMessages").textContent="پیام‌ها بارگذاری نشد: "+error.message;return;}
