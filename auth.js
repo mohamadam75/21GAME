@@ -18,7 +18,7 @@
 (function(){
   const $=id=>document.getElementById(id);
   let channel=null, chatChannel=null, voiceChannel=null, seatedTable=null;
-  let voiceEnabled=false, localStream=null;
+  let voiceEnabled=false, localStream=null, shownAskechiRound=null, askechiVisibleUntil=0;
   const peers=new Map(), audioEls=new Map();
   const stakes=[20000,30000,40000,50000,50000,60000,70000,80000,90000,100000];
   function cash(n){return Number(n||0).toLocaleString("fa-IR");}
@@ -43,20 +43,25 @@
     const {data:game,error:gameError}=await client.rpc("game_my_hand",{p_table_id:tableId});
     const me=window.current21GameUser?.id;
     const askechi=(!gameError&&Array.isArray(game?.askechi_cards))?game.askechi_cards:[];
+    if(!gameError&&game?.status==="playing"&&askechi.length&&shownAskechiRound!==game.round_no){
+      shownAskechiRound=game.round_no;askechiVisibleUntil=Date.now()+2400;
+      setTimeout(()=>{if(seatedTable===tableId)renderLobby(tableIndex).catch(console.error);},2450);
+    }
+    const showAskechi=Date.now()<askechiVisibleUntil;
     $("seats").innerHTML=Array.from({length:6},(_,i)=>{
       const p=seats.find(s=>s.seat_no===i+1);
       if(!p)return '<div class="seat s'+i+'"><div class="avatar">＋</div><div class="name">صندلی خالی</div><div class="tag"></div><div class="cards"></div></div>';
       const isMe=p.user_id===me, isBanker=!gameError&&game?.banker_user_id===p.user_id;
       const isActive=!gameError&&game?.active_user_id===p.user_id;
       const name=escapeHtml(p.profiles?.display_name||p.profiles?.username||"بازیکن");
-      const initialCards=askechi.filter(x=>x.user_id===p.user_id).map(x=>cardHtml(x.card,true)).join("");
+      const initialCards=showAskechi?askechi.filter(x=>x.user_id===p.user_id).map(x=>cardHtml(x.card,true)).join(""):"";
       const privateCards=isMe&&!gameError?(game?.my_hand||[]).map(x=>cardHtml(x,true)).join(""):"";
       const shownCards=initialCards || privateCards || (game?.status==="playing"&&!isMe?'<span class="card-back playing-card"></span>':"");
       return '<div class="seat s'+i+' '+(isMe?"active ":"")+(isBanker?"banker ":"")+(isActive?"turn-active":"")+'"><div class="avatar">'+(isBanker?"👑":"👤")+'</div><div class="name">'+name+'</div><div class="tag">'+(isBanker?"بانکدار":isMe?"شما":isActive?"نوبت بازی":"بازیکن")+'</div><div class="cards">'+shownCards+'</div></div>';
     }).join("");
     const statusText=gameError?"خطای دریافت وضعیت بازی: "+gameError.message:(game?.message||"در انتظار شروع بازی");
     $("status").textContent=statusText;
-    $("handInfo").innerHTML=gameError?"وضعیت کارت‌ها دریافت نشد.":("کارت‌های شما: "+((game?.my_hand||[]).map(cardHtml).join(" ")||"—")+" · امتیاز: "+(game?.my_score||0));
+    $("handInfo").innerHTML=gameError?"وضعیت کارت‌ها دریافت نشد.":("کارت‌های شما: "+((game?.my_hand||[]).map(x=>cardHtml(x)).join(" ")||"—")+" · امتیاز: "+(game?.my_score||0));
     $("cardChoices").innerHTML="";
     $("bankAmount").textContent=cash(game?.bank_amount??stakes[tableIndex]*3);
     const chipCount=Math.max(0,Math.min(12,Math.round(Number(game?.bank_amount||0)/stakes[tableIndex])));
