@@ -395,3 +395,19 @@ button{
 .seat .cards .playing-card.mini .rank{font-size:12px;}
 .seat .cards .playing-card.mini .suit{font-size:15px;}
 .seat.turn-active .avatar{box-shadow:0 0 0 4px rgba(108,201,154,.28);border-color:#6cc99a;}
+
+
+/* Account settings, chat stickers and unread badge */
+.unread-dot{display:inline-block;width:9px;height:9px;margin-inline-start:5px;border-radius:50%;background:#ff3b45;box-shadow:0 0 0 2px rgba(255,59,69,.18);vertical-align:middle}
+.sticker-picker{display:flex;flex-wrap:wrap;gap:5px;padding:8px;margin:6px 0;background:#101a2a;border:1px solid #34445d;border-radius:12px}
+.sticker-picker button{padding:5px 8px;min-width:35px;font-size:22px;background:#24334a;border:0;border-radius:8px}
+.sticker-picker button:hover{transform:scale(1.08)}
+#stickerBtn{background:#26364e;color:#fff;padding:8px 11px;border:0;border-radius:8px}
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.settings-card{padding:12px;background:#111c2d;border:1px solid #30415b;border-radius:12px;margin:10px 0}
+.settings-card label{display:block;margin:8px 0 4px;color:#c9d5e6}
+.settings-card input,.settings-card select{width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #40516b;background:#0c1421;color:#fff}
+.settings-card button{margin-top:8px}
+.user-row{padding:12px;margin:8px 0;border:1px solid #30415b;border-radius:10px;background:#111c2d}
+.user-row small{display:block;color:#a9bad1}
+.chat-msg{overflow-wrap:anywhere}
