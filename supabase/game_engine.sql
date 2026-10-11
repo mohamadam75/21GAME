@@ -35,6 +35,7 @@ declare
   bank_amount bigint;
   phase text;
   i integer;
+  j integer;
 begin
   if uid is null then raise exception 'login_required'; end if;
   if p_action not in ('start','draw','stand','close','pause','resume') then raise exception 'invalid_action'; end if;
@@ -102,8 +103,21 @@ begin
     insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by)
       values(banker,-(stake_amount*3),'game_stake','شروع بانکداری میز '||p_table_id,banker);
 
-    -- Remove as-keshi cards before play; only banker role persists.
-    v_hands := jsonb_build_object(banker::text,'[]'::jsonb);
+    -- Burn the as-keshi cards, then deal one opening card to every player and the banker.
+    v_hands := '{}'::jsonb;
+    for j in 1..seat_count loop
+      active := seat_ids[j];
+      if active <> banker then
+        if jsonb_array_length(v_deck)=0 then raise exception 'deck_exhausted'; end if;
+        card := v_deck->0;
+        v_deck := v_deck - 0;
+        v_hands := jsonb_set(v_hands,array[active::text],jsonb_build_array(card),true);
+      end if;
+    end loop;
+    if jsonb_array_length(v_deck)=0 then raise exception 'deck_exhausted'; end if;
+    card := v_deck->0;
+    v_deck := v_deck - 0;
+    v_hands := jsonb_set(v_hands,array[banker::text],jsonb_build_array(card),true);
     v_deck := (select coalesce(jsonb_agg(value order by ord),'[]'::jsonb)
              from jsonb_array_elements(v_deck) with ordinality as d(value,ord));
     select array_agg(user_id order by seat_no) into seat_ids from public.table_seats where table_id=p_table_id;
