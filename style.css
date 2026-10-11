@@ -388,3 +388,10 @@ button{
 .hand-info .playing-card{width:52px;height:74px}
 .social-tools #soundToggle{background:#33445e;color:#f5d77b}
 .social-tools #soundToggle.muted{color:#b2bfd0;opacity:.7}
+
+
+/* Compact card faces used around multiplayer seats */
+.seat .cards .playing-card.mini{width:32px;height:46px;margin:1px;border-radius:5px;font-size:11px;}
+.seat .cards .playing-card.mini .rank{font-size:12px;}
+.seat .cards .playing-card.mini .suit{font-size:15px;}
+.seat.turn-active .avatar{box-shadow:0 0 0 4px rgba(108,201,154,.28);border-color:#6cc99a;}
