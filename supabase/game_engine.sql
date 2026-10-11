@@ -184,7 +184,7 @@ begin
       elsif score=21 then
         gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
         if uid=banker then
-          update public.table_public_state set status='settled',active_user_id=null,public_message='بانکدار به ۲۱ رسید؛ دست تمام شد',updated_at=now() where table_id=p_table_id;
+          update public.table_public_state as state set status='settled',active_user_id=null,public_message='بانکدار به ۲۱ رسید؛ دست تمام شد',bank_amount=state.bank_amount+t.stake,updated_at=now() where state.table_id=p_table_id;
         else
           update public.profiles set demo_chips=demo_chips+t.stake where id=uid;
           insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by)
