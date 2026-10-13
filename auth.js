@@ -66,6 +66,24 @@
   const $=id=>document.getElementById(id);
   let channel=null, chatChannel=null, voiceChannel=null, seatedTable=null, actionInFlight=false, autoTurnTimer=null, autoTurnTimerKey=null;
   let voiceEnabled=false, localStream=null, shownAskechiRound=null, askechiVisibleUntil=0;
+  let pauseKickTimer=null, pausedTableId=null;
+  function clearPauseKickTimer(){if(pauseKickTimer)clearTimeout(pauseKickTimer);pauseKickTimer=null;pausedTableId=null;}
+  function schedulePauseKick(tableId){
+    clearPauseKickTimer();pausedTableId=tableId;
+    pauseKickTimer=setTimeout(async()=>{
+      if(pausedTableId!==tableId||seatedTable!==tableId)return;
+      try{
+        const {error}=await window.supabase21Game.rpc("game_kick_paused_player",{p_table_id:tableId});
+        if(error)throw error;
+        clearPauseKickTimer();
+        for(const ch of [channel,chatChannel,voiceChannel])if(ch)await window.supabase21Game.removeChannel(ch);
+        channel=null;chatChannel=null;voiceChannel=null;seatedTable=null;
+        $("leaveOnlineTable").classList.add("hidden");$("pauseOnlineTable").classList.add("hidden");$("modal").classList.add("hidden");
+        await refreshOccupancy();
+        alert("به دلیل ۵ دقیقه عدم حضور، از میز خارج شدید.");
+      }catch(e){console.error("Auto kick after pause failed",e);}
+    },5*60*1000);
+  }
   const peers=new Map(), audioEls=new Map();
   let stakes=[20000,30000,40000,50000,50000,60000,70000,80000,90000,100000];
   let tableStatuses=Array(10).fill("waiting"),tableCapacities=Array(10).fill(6);
@@ -266,6 +284,7 @@
         const {error:insertErr}=await client.from("table_seats").insert({table_id:i+1,user_id:user.id,seat_no:seatNo});
         if(insertErr)throw insertErr;
       }
+      if(pausedTableId===i+1){clearPauseKickTimer();const resumed=await client.rpc("game_action",{p_table_id:i+1,p_action:"resume"});if(resumed.error)throw resumed.error;}
       seatedTable=i+1;
       $("modalTitle").textContent="میز "+(i+1);$("modal").classList.remove("hidden");
       $("leaveOnlineTable").classList.remove("hidden");$("pauseOnlineTable").classList.remove("hidden");
@@ -283,13 +302,14 @@
       if(error){alert("خطای بازی: "+error.message);return;}
       if(window.refresh21GameProfile)await window.refresh21GameProfile();
       if(seatedTable===tableAtStart){await renderLobby(tableAtStart-1);if(data?.message)$("status").textContent=data.message;}
-      if(action==="pause")$("modal").classList.add("hidden");
+      if(action==="pause"){schedulePauseKick(tableAtStart);$("modal").classList.add("hidden");}
     }catch(e){alert("خطای بازی: "+(e.message||e));}
     finally{actionInFlight=false;actionButtons.forEach(id=>{const el=$(id);if(el)el.disabled=false;});if(seatedTable)renderLobby(seatedTable-1).catch(console.error);}
   }
   async function leaveOnlineTable(){
     const client=window.supabase21Game,user=window.current21GameUser;if(!client||!user||!seatedTable)return;
     const tableId=seatedTable;
+    clearPauseKickTimer();
     if(voiceEnabled)await toggleVoice();
     const {error}=await client.rpc("game_leave_table",{p_table_id:tableId});
     if(error){alert("ترک میز انجام نشد: "+error.message);return;}
