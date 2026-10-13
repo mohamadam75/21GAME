@@ -322,6 +322,58 @@ grant execute on function public.game_my_hand(integer) to authenticated;
 
 
 -- Leaving a table clears its current hand so a rejoining player never resumes stale cards.
+-- Remove only the paused user after the five-minute grace period.
+create or replace function public.game_kick_paused_player(p_table_id integer)
+returns jsonb
+language plpgsql
+security definer
+set search_path=public
+as $
+declare
+  uid uuid:=auth.uid();
+  ps public.table_public_state;
+  priv public.table_private_state;
+  gs jsonb;
+  stake_amount bigint;
+begin
+  if uid is null then raise exception 'login_required'; end if;
+  perform 1 from public.game_tables where id=p_table_id for update;
+  if not found then raise exception 'table_not_found'; end if;
+  if not exists(select 1 from public.table_seats where table_id=p_table_id and user_id=uid) then
+    return jsonb_build_object('ok',true,'already_removed',true);
+  end if;
+  select * into ps from public.table_public_state where table_id=p_table_id for update;
+  select * into priv from public.table_private_state where table_id=p_table_id for update;
+  gs:=coalesce(priv.game_state,'{}'::jsonb);
+  select stake into stake_amount from public.game_tables where id=p_table_id;
+
+  if ps.banker_user_id=uid then
+    if coalesce(ps.bank_amount,0)>0 then
+      update public.profiles set demo_chips=demo_chips+ps.bank_amount where id=uid;
+      insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by)
+      values(uid,ps.bank_amount,'refund','بازگشت بانک پس از خروج خودکار از میز '||p_table_id,uid);
+    end if;
+    update public.table_public_state set status='waiting',banker_user_id=null,active_user_id=null,
+      bank_amount=0,public_message='بانکدار پس از ۵ دقیقه عدم حضور خارج شد؛ میز آماده شروع جدید است',updated_at=now()
+      where table_id=p_table_id;
+    update public.table_private_state set deck='[]'::jsonb,hands='{}'::jsonb,game_state='{}'::jsonb,updated_at=now()
+      where table_id=p_table_id;
+  elsif ps.status='playing' and coalesce(gs->>'current_opponent','')=uid::text then
+    gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
+    gs:=jsonb_set(gs,'{abandoned_opponent}','true'::jsonb,true);
+    update public.table_public_state set status='settled',active_user_id=null,
+      bank_amount=coalesce(bank_amount,0)+stake_amount,
+      public_message='بازیکن پس از ۵ دقیقه عدم حضور حذف شد؛ دست به نفع بانکدار تمام شد',updated_at=now()
+      where table_id=p_table_id;
+    update public.table_private_state set game_state=gs,updated_at=now() where table_id=p_table_id;
+  end if;
+  delete from public.table_seats where table_id=p_table_id and user_id=uid;
+  return jsonb_build_object('ok',true,'table_id',p_table_id,'removed_user',uid);
+end;
+$;
+revoke all on function public.game_kick_paused_player(integer) from public;
+grant execute on function public.game_kick_paused_player(integer) to authenticated;
+
 create or replace function public.game_leave_table(p_table_id integer)
 returns jsonb
 language plpgsql
