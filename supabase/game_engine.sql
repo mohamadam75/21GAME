@@ -329,6 +329,7 @@ language plpgsql
 security definer
 set search_path=public
 as $
+
 declare
   uid uuid:=auth.uid();
   ps public.table_public_state;
