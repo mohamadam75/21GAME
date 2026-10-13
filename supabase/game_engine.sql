@@ -328,8 +328,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path=public
-as $
-
+as $$
 declare
   uid uuid:=auth.uid();
   ps public.table_public_state;
@@ -371,7 +370,7 @@ begin
   delete from public.table_seats where table_id=p_table_id and user_id=uid;
   return jsonb_build_object('ok',true,'table_id',p_table_id,'removed_user',uid);
 end;
-$;
+$$;
 revoke all on function public.game_kick_paused_player(integer) from public;
 grant execute on function public.game_kick_paused_player(integer) to authenticated;
 
