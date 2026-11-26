@@ -279,6 +279,7 @@ begin
     update public.table_private_state set deck=v_deck,hands=v_hands,game_state=gs,updated_at=now() where table_id=p_table_id;
   end if;
 
+  update public.table_public_state set updated_at=now() where table_id=p_table_id;
   select * into ps from public.table_public_state where table_id=p_table_id;
   select * into priv from public.table_private_state where table_id=p_table_id;
   my_hand:=coalesce(priv.hands->uid::text,'[]'::jsonb);
@@ -298,7 +299,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path=public
-as $$
+as $
 declare uid uuid:=auth.uid(); h jsonb; gs jsonb; ps public.table_public_state; total integer;
 begin
   if uid is null then raise exception 'login_required'; end if;
@@ -311,9 +312,10 @@ begin
     'revealed_hands',case when ps.status='settled' then coalesce((select jsonb_object_agg(k,v) from jsonb_each(coalesce((select hands from public.table_private_state where table_id=p_table_id),'{}'::jsonb)) as e(k,v)),'{}'::jsonb) else '{}'::jsonb end,
     'phase',coalesce(gs->>'phase','waiting'),
     'status',coalesce(ps.status,'waiting'),'banker_user_id',ps.banker_user_id,'active_user_id',ps.active_user_id,
-    'bank_amount',ps.bank_amount,'round_no',ps.round_no,'message',ps.public_message,'is_banker',ps.banker_user_id=uid,'banker_hands_played',coalesce((gs->>'banker_hands_played')::integer,0),'askechi_cards',coalesce(gs->'askechi_cards','[]'::jsonb));
+    'bank_amount',ps.bank_amount,'round_no',ps.round_no,'message',ps.public_message,'is_banker',ps.banker_user_id=uid,
+    'banker_hands_played',coalesce((gs->>'banker_hands_played')::integer,0));
 end;
-$$;
+$;
 
 revoke all on function public.game_action(integer,text) from public;
 revoke all on function public.game_my_hand(integer) from public;
@@ -409,3 +411,54 @@ end;
 $$;
 revoke all on function public.game_leave_table(integer) from public;
 grant execute on function public.game_leave_table(integer) to authenticated;
+
+
+-- Server-authoritative timeout fallback. Any seated player can safely request a tick;
+-- the row lock and timestamp check ensure only one client advances a timed-out turn.
+create or replace function public.game_auto_advance(p_table_id integer)
+returns jsonb
+language plpgsql
+security definer
+set search_path=public
+as $$
+declare
+  caller uuid:=auth.uid();
+  ps public.table_public_state;
+  priv public.table_private_state;
+  active_hand jsonb;
+  active_score integer;
+  action_name text;
+  old_claim text;
+  result_data jsonb;
+begin
+  if caller is null then raise exception 'login_required'; end if;
+  if not exists(select 1 from public.table_seats where table_id=p_table_id and user_id=caller) then
+    raise exception 'not_seated_at_table';
+  end if;
+  select * into ps from public.table_public_state where table_id=p_table_id for update;
+  if not found or ps.status<>'playing' or ps.active_user_id is null then
+    return jsonb_build_object('advanced',false);
+  end if;
+  if ps.updated_at > now()-interval '12 seconds' then
+    return jsonb_build_object('advanced',false,'waiting',true);
+  end if;
+  select * into priv from public.table_private_state where table_id=p_table_id for update;
+  active_hand:=coalesce(priv.hands->ps.active_user_id::text,'[]'::jsonb);
+  select coalesce(sum((x->>'value')::integer),0) into active_score from jsonb_array_elements(active_hand) x;
+  if ps.active_user_id=ps.banker_user_id then
+    action_name:=case when active_score<18 and jsonb_array_length(active_hand)<5 then 'draw' else 'close' end;
+  else
+    action_name:=case when active_score<17 and jsonb_array_length(active_hand)<5 then 'draw' else 'stand' end;
+  end if;
+  old_claim:=current_setting('request.jwt.claim.sub',true);
+  perform set_config('request.jwt.claim.sub',ps.active_user_id::text,true);
+  result_data:=public.game_action(p_table_id,action_name);
+  perform set_config('request.jwt.claim.sub',coalesce(old_claim,''),true);
+  return jsonb_build_object('advanced',true,'action',action_name,'result',result_data);
+exception when others then
+  perform set_config('request.jwt.claim.sub',coalesce(old_claim,''),true);
+  raise;
+end;
+$$;
+revoke all on function public.game_auto_advance(integer) from public;
+grant execute on function public.game_auto_advance(integer) to authenticated;
