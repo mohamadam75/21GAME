@@ -9,7 +9,43 @@
   async function refreshProfile(){if(window.current21GameUser)await loadProfile({id:window.current21GameUser.id,email:window.current21GameUser.email});}
   window.refresh21GameProfile=refreshProfile;
   async function submitAuth(e){e.preventDefault();if(!client)return status("تنظیم Supabase کامل نیست؛ فایل SUPABASE_SETUP.md را دنبال کنید.",true);const email=$("authEmail").value.trim(),password=$("authPassword").value;$("authSubmit").disabled=true;status(isSignup?"در حال ساخت حساب...":"در حال ورود...");try{if(isSignup){const username=$("authUsername").value.trim().toLowerCase();if(!/^[a-z0-9_]{3,24}$/.test(username))throw Error("نام کاربری باید ۳ تا ۲۴ حرف انگلیسی، عدد یا زیرخط باشد.");const r=await client.auth.signUp({email,password,options:{data:{username,display_name:username}}});if(r.error)throw r.error;if(!r.data.session){status("حساب ساخته شد. ایمیل تأیید را بررسی کنید؛ سپس وارد شوید.");return;}await loadProfile(r.data.user);}else{const r=await client.auth.signInWithPassword({email,password});if(r.error)throw r.error;await loadProfile(r.data.user);}}catch(err){status(err.message||"عملیات انجام نشد.",true);}finally{$("authSubmit").disabled=false;}}
-  function requestForm(type){if(!window.current21GameUser){alert("ابتدا وارد حساب شوید.");return;}const wd=type==="withdrawal";const body=['<p>'+(wd?"درخواست برداشت ژتون آزمایشی":"درخواست شارژ ژتون آزمایشی")+'</p>','<p>موجودی: <strong>'+Number(profile?.demo_chips||0).toLocaleString("fa-IR")+' ژتون</strong></p>','<label>مبلغ ژتون</label><input id="reqAmount" type="number" min="1" step="1" placeholder="مبلغ" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">',wd?'<input id="reqRef" placeholder="توضیح درخواست" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">':'<label>روش درخواست</label><select id="reqMethod" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff"><option value="card_transfer">کارت به کارت (بررسی دستی)</option><option value="voucher">ووچر (بررسی دستی)</option><option value="manual">هماهنگی با مدیر</option></select><label id="proofLabel" class="hidden">عکس رسید کارت‌به‌کارت (حداکثر ۵ مگابایت)</label><input id="reqProof" class="hidden" type="file" accept="image/png,image/jpeg,image/webp" style="width:100%;padding:10px;margin:8px 0;color:#fff"><input id="reqRef" placeholder="شماره پیگیری یا توضیح" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">','<p style="font-size:12px;color:#9fb0c6">این نسخه فقط ژتون آزمایشی ثبت می‌کند؛ پرداخت واقعی انجام نمی‌شود.</p><button id="reqSubmit">ثبت درخواست</button><p id="reqStatus"></p>'].join("");window.open21GameAccountModal(wd?"درخواست برداشت ژتون":"درخواست شارژ ژتون",body);if(!wd){const method=$("reqMethod"),label=$("proofLabel"),file=$("reqProof");const toggle=()=>{const show=method.value==="card_transfer";label.classList.toggle("hidden",!show);file.classList.toggle("hidden",!show);};method.addEventListener("change",toggle);toggle();}$("reqSubmit").onclick=async()=>{const amount=Number($("reqAmount").value),ref=$("reqRef").value.trim(),method=wd?"manual":$("reqMethod").value,file=!wd&&method==="card_transfer"?$("reqProof").files[0]:null,msg=$("reqStatus");if(!Number.isSafeInteger(amount)||amount<=0){msg.textContent="مبلغ معتبر وارد کنید.";return;}if(wd&&amount>Number(profile?.demo_chips||0)){msg.textContent="موجودی ژتون کافی نیست.";return;}if(!wd&&method==="card_transfer"&&!file){msg.textContent="لطفاً عکس رسید کارت‌به‌کارت را انتخاب کنید.";return;}if(file&&(!/^image\/(png|jpeg|webp)$/.test(file.type)||file.size>5*1024*1024)){msg.textContent="فقط عکس PNG/JPG/WEBP تا ۵ مگابایت مجاز است.";return;}msg.textContent="در حال ثبت...";$("reqSubmit").disabled=true;let proof_path=null;try{if(file){proof_path=window.current21GameUser.id+"/"+Date.now()+"-"+file.name.replace(/[^a-zA-Z0-9._-]/g,"_");const up=await client.storage.from("payment-proofs").upload(proof_path,file,{contentType:file.type,upsert:false});if(up.error)throw up.error;}const payload={user_id:window.current21GameUser.id,request_type:type,amount,method,reference:ref||null};if(proof_path)payload.proof_path=proof_path;const r=await client.from("wallet_requests").insert(payload);if(r.error)throw r.error;msg.textContent="درخواست ثبت شد و پس از بررسی مدیر نتیجه اعلام می‌شود.";}catch(e){msg.textContent="ثبت نشد: "+(e.message||e);if(proof_path)await client.storage.from("payment-proofs").remove([proof_path]);}finally{$("reqSubmit").disabled=false;}};}
+  function requestForm(type){
+    if(!window.current21GameUser){alert("ابتدا وارد حساب شوید.");return;}
+    const isWithdrawal=type==="withdrawal";
+    const title=isWithdrawal?"درخواست کسر ژتون آزمایشی":"درخواست شارژ ژتون آزمایشی";
+    const body=
+      '<p>'+title+'</p>'+
+      '<p>موجودی فعلی: <strong>'+Number(profile?.demo_chips||0).toLocaleString("fa-IR")+' ژتون</strong></p>'+
+      '<label>مقدار ژتون</label>'+
+      '<input id="reqAmount" type="number" min="1" step="1" placeholder="مقدار ژتون" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">'+
+      '<label>توضیح (اختیاری)</label>'+
+      '<input id="reqRef" maxlength="250" placeholder="توضیح درخواست" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">'+
+      '<p style="font-size:12px;color:#f3c77b;line-height:1.8">این بخش فقط برای مدیریت ژتون‌های غیرنقدی بازی است. هیچ پرداخت، واریز بانکی یا برداشت پول واقعی انجام نمی‌شود.</p>'+
+      '<button id="reqSubmit">ثبت درخواست</button><p id="reqStatus"></p>';
+    window.open21GameAccountModal(title,body);
+    $("reqSubmit").onclick=async()=>{
+      const amount=Number($("reqAmount").value),reference=$("reqRef").value.trim(),msg=$("reqStatus");
+      if(!Number.isSafeInteger(amount)||amount<=0){msg.textContent="مقدار معتبر وارد کنید.";return;}
+      if(isWithdrawal&&amount>Number(profile?.demo_chips||0)){msg.textContent="موجودی ژتون کافی نیست.";return;}
+      msg.textContent="در حال ثبت درخواست...";
+      $("reqSubmit").disabled=true;
+      try{
+        const result=await client.from("wallet_requests").insert({
+          user_id:window.current21GameUser.id,
+          request_type:type,
+          amount,
+          method:"manual",
+          reference:reference||null
+        });
+        if(result.error)throw result.error;
+        msg.textContent="درخواست ثبت شد و پس از بررسی مدیر نتیجه مشخص می‌شود.";
+      }catch(error){
+        msg.textContent="ثبت درخواست انجام نشد: "+(error.message||error);
+      }finally{
+        $("reqSubmit").disabled=false;
+      }
+    };
+  }
   async function adminPanel(){
     if(profile?.role!=="admin")return;
     window.open21GameAccountModal("پنل مدیریت","<p>در حال بارگذاری بخش‌های مدیریت...</p>");
