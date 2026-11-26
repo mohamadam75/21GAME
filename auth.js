@@ -370,7 +370,7 @@
       pc.oniceconnectionstatechange=async()=>{
         if(pc.iceConnectionState!=="failed"||!voiceEnabled||!peers.has(id))return;
         try{
-          const freshIceServers=await getVoiceIceServers(true);
+          const freshIceServers=await getVoiceIceServers();
           if(!peers.has(id)||pc.signalingState==="closed")return;
           pc.setConfiguration({...pc.getConfiguration(),iceServers:freshIceServers});
           pc.restartIce();
