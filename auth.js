@@ -126,6 +126,27 @@
       return cardHtml(card,small,animate,index);
     }).join("");
   }
+  function animateChipTransfer(fromEl,toEl){
+    const table=$("seats")?.closest(".poker-table");
+    if(!table||!fromEl||!toEl)return;
+    const tableRect=table.getBoundingClientRect();
+    const from=fromEl.getBoundingClientRect(),to=toEl.getBoundingClientRect();
+    const startX=from.left+from.width/2-tableRect.left-12;
+    const startY=from.top+from.height/2-tableRect.top-12;
+    const deltaX=to.left+to.width/2-from.left-from.width/2;
+    const deltaY=to.top+to.height/2-from.top-from.height/2;
+    for(let i=0;i<3;i++){
+      const chip=document.createElement("span");
+      chip.className="chip-flight-token chip-"+(i%4);
+      chip.style.left=(startX+(i-1)*9)+"px";
+      chip.style.top=(startY+(i-1)*5)+"px";
+      chip.style.setProperty("--flight-x",deltaX+"px");
+      chip.style.setProperty("--flight-y",deltaY+"px");
+      chip.style.animationDelay=(i*65)+"ms";
+      table.appendChild(chip);
+      setTimeout(()=>chip.remove(),950);
+    }
+  }
   async function refreshOccupancy(){
     const client=window.supabase21Game;if(!client)return;
     const [seatResult,tableResult]=await Promise.all([client.from("table_seats").select("table_id"),client.from("game_tables").select("id,stake,capacity,status").order("id")]);
@@ -202,10 +223,18 @@
     $("cardChoices").innerHTML="";
     $("bankAmount").textContent=cash(game?.bank_amount??stakes[tableIndex]*3);
     const bankAmount=Number(game?.bank_amount??stakes[tableIndex]*3);
-    const bankChanged=lastVisualBankAmount===null||bankAmount!==lastVisualBankAmount;
+    const previousBankAmount=lastVisualBankAmount;
+    const bankChanged=previousBankAmount===null||bankAmount!==previousBankAmount;
     const chipCount=Math.max(0,Math.min(12,Math.round(bankAmount/stakes[tableIndex])));
     $("bankChips").innerHTML=chipCount?Array.from({length:chipCount},(_,i)=>'<span class="chip-token chip-'+(i%4)+(bankChanged?' chip-arrive':'')+'" style="--chip-index:'+i+'"></span>').join(""):'<span class="empty-bank">بانک بازی</span>';
-    if(bankChanged&&lastVisualBankAmount!==null&&window.play21Fx)window.play21Fx("chips");
+    if(bankChanged&&previousBankAmount!==null){
+      const activeSeatIndex=Number(seats.find(x=>x.user_id===game?.active_user_id)?.seat_no||0)-1;
+      const activeSeat=activeSeatIndex>=0?$("seats").querySelector(".s"+activeSeatIndex+" .avatar"):null;
+      const bankEl=$("bankChips");
+      if(bankAmount<previousBankAmount)animateChipTransfer(bankEl,activeSeat);
+      else animateChipTransfer(activeSeat,bankEl);
+      if(window.play21Fx)window.play21Fx("chips");
+    }
     lastVisualBankAmount=bankAmount;
     $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableIndex])+" ژتون آزمایشی · ظرفیت ۶ نفر · "+seats.length+" بازیکن حاضر";
     const isMyTurn=!!game&&!gameError&&game.status==="playing"&&game.active_user_id===me;
