@@ -217,11 +217,14 @@
     lastVisualBankAmount=bankAmount;
     $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableIndex])+" ژتون آزمایشی · ظرفیت ۶ نفر · "+seats.length+" بازیکن حاضر";
     const isMyTurn=!!game&&!gameError&&game.status==="playing"&&game.active_user_id===me;
+    const isPausedMe=!!me&&(game?.paused_users||[]).includes(me);
+    $("drawCardBtn").dataset.action=isPausedMe?"resume":"draw";
+    $("drawCardBtn").textContent=isPausedMe?"▶ بازگشت به بازی":"کارت بکش";
     scheduleTurnAutoAction(tableId,gameError?null:game,me,isMyTurn);
     $("startGameBtn").classList.toggle("hidden",!!game&&!gameError&&game.status==="playing");
     $("startGameBtn").textContent=game?.status==="settled"&&game?.banker_user_id&&Number(game?.bank_amount||0)>0&&Number(game?.banker_hands_played||0)<3&&Number(game?.bank_amount||0)<Number(stakes[tableIndex])*9?"ادامه بانکداری":"شروع دست / آس‌کشی";
     $("startGameBtn").disabled=seats.length<2;
-    $("drawCardBtn").classList.toggle("hidden",!isMyTurn);
+    $("drawCardBtn").classList.toggle("hidden",!isMyTurn&&!isPausedMe);
     $("standBtn").style.display=isMyTurn&&!game?.is_banker?"inline-block":"none";
     $("closeBankBtn").style.display=isMyTurn&&game?.is_banker?"inline-block":"none";
     $("nextPlayerBtn").style.display="none";$("nextRoundBtn").style.display="none";
@@ -389,7 +392,7 @@
     window.joinTable=joinOnlineTable;
     $("leaveOnlineTable").addEventListener("click",leaveOnlineTable);
     $("startGameBtn").addEventListener("click",()=>sendGameAction("start"));
-    $("drawCardBtn").addEventListener("click",()=>sendGameAction("draw"));
+    $("drawCardBtn").addEventListener("click",()=>sendGameAction($("drawCardBtn").dataset.action||"draw"));
     $("standBtn").addEventListener("click",()=>sendGameAction("stand"));
     $("closeBankBtn").addEventListener("click",()=>sendGameAction("close"));
     $("pauseOnlineTable").textContent="خروج موقت";
