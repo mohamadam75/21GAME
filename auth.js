@@ -12,10 +12,10 @@
   function requestForm(type){
     if(!window.current21GameUser){alert("ابتدا وارد حساب شوید.");return;}
     const isWithdrawal=type==="withdrawal";
-    const title=isWithdrawal?"درخواست کسر ژتون آزمایشی":"درخواست شارژ ژتون آزمایشی";
+    const title=isWithdrawal?"درخواست برداشت ژتون":"درخواست شارژ ژتون";
     const body=
       '<p>'+title+'</p>'+
-      '<p>موجودی فعلی: <strong>'+Number(profile?.demo_chips||0).toLocaleString("fa-IR")+' ژتون</strong></p>'+
+      '<p>موجودی فعلی: <strong>'+Number(profile?.demo_chips||0).toLocaleString("fa-IR")+' ریال · ژتون</strong></p>'+
       '<label>مقدار ژتون</label>'+
       '<input id="reqAmount" type="number" min="1" step="1" placeholder="مقدار ژتون" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">'+
       '<label>توضیح (اختیاری)</label>'+
@@ -60,18 +60,18 @@
     const names=Object.fromEntries(users.map(u=>[u.id,u.display_name||u.username]));
     const deposits=reqs.filter(x=>x.request_type==="chip_topup");
     const withdrawals=reqs.filter(x=>x.request_type==="withdrawal");
-    const requestCard=(x,isDeposit)=>'<article class="admin-request-card"><div class="admin-request-top"><strong>'+esc(names[x.user_id]||"کاربر")+'</strong><span class="admin-request-amount">'+Number(x.amount).toLocaleString("fa-IR")+' ژتون</span></div><div class="admin-request-meta">'+(isDeposit?"درخواست شارژ ژتون آزمایشی":"درخواست کسر ژتون آزمایشی")+' · '+esc(x.method||"—")+'</div><p class="admin-request-reference">'+esc(x.reference||"بدون توضیح یا شماره پیگیری")+'</p>'+(isDeposit&&x.proof_path?'<div id="proof-'+x.id+'" class="admin-proof"></div>':"")+'<div class="admin-request-actions"><button class="admin-approve" data-review="'+x.id+'" data-approve="true">تأیید درخواست</button><button class="admin-reject" data-review="'+x.id+'" data-approve="false">رد درخواست</button></div></article>';
+    const requestCard=(x,isDeposit)=>'<article class="admin-request-card"><div class="admin-request-top"><strong>'+esc(names[x.user_id]||"کاربر")+'</strong><span class="admin-request-amount">'+Number(x.amount).toLocaleString("fa-IR")+' ریال · ژتون</span></div><div class="admin-request-meta">'+(isDeposit?"درخواست شارژ ژتون":"درخواست برداشت ژتون")+' · '+esc(x.method||"—")+'</div><p class="admin-request-reference">'+esc(x.reference||"بدون توضیح یا شماره پیگیری")+'</p>'+(isDeposit&&x.proof_path?'<div id="proof-'+x.id+'" class="admin-proof"></div>':"")+'<div class="admin-request-actions"><button class="admin-approve" data-review="'+x.id+'" data-approve="true">تأیید درخواست</button><button class="admin-reject" data-review="'+x.id+'" data-approve="false">رد درخواست</button></div></article>';
     body.innerHTML=
       '<nav class="admin-tabs" aria-label="بخش‌های مدیریت">'+
         '<button class="admin-tab active" data-admin-tab="tables">🃏 مدیریت میزها</button>'+
-        '<button class="admin-tab" data-admin-tab="withdrawals">💸 تأیید کسر ژتون <span>'+withdrawals.length+'</span></button>'+
+        '<button class="admin-tab" data-admin-tab="withdrawals">💸 تأیید برداشت ژتون <span>'+withdrawals.length+'</span></button>'+
         '<button class="admin-tab" data-admin-tab="deposits">🪙 تأیید شارژ ژتون <span>'+deposits.length+'</span></button>'+
         '<button class="admin-tab" data-admin-tab="users">👥 کاربران و ژتون</button>'+
       '</nav>'+
       '<section class="admin-section active" data-admin-section="tables"><div class="admin-section-heading"><div><h3>مدیریت میزها</h3><p>مبلغ پایه، ظرفیت و وضعیت هر میز را جداگانه تنظیم کنید.</p></div><span class="admin-count">'+tables.length+' میز</span></div><div class="admin-table-grid">'+tables.map(t=>'<article class="settings-card admin-table-card"><div class="admin-table-title"><strong>میز شماره '+t.id+'</strong><span class="admin-table-status '+(t.status==="waiting"?"is-active":"is-off")+'">'+(t.status==="waiting"?"فعال":"غیرفعال")+'</span></div><label>مبلغ پایه ژتون</label><input type="number" min="1" id="stake-'+t.id+'" value="'+Number(t.stake)+'"><label>ظرفیت میز</label><select id="capacity-'+t.id+'">'+[2,3,4,5,6].map(n=>'<option value="'+n+'" '+(n===t.capacity?'selected':'')+'>'+n+' نفر</option>').join('')+'</select><label>وضعیت میز</label><select id="table-status-'+t.id+'"><option value="waiting" '+(t.status==="waiting"?'selected':'')+'>فعال</option><option value="maintenance" '+(t.status==="maintenance"?'selected':'')+'>غیرفعال / تعمیرات</option></select><button data-save-table="'+t.id+'">ذخیره تغییرات میز</button></article>').join("")+'</div></section>'+
-      '<section class="admin-section" data-admin-section="withdrawals"><div class="admin-section-heading"><div><h3>تأیید کسر ژتون آزمایشی</h3><p>درخواست‌های کسر ژتون غیرنقدی در انتظار بررسی مدیر.</p></div><span class="admin-count">'+withdrawals.length+' درخواست</span></div>'+(withdrawals.length?'<div class="admin-request-list">'+withdrawals.map(x=>requestCard(x,false)).join("")+'</div>':'<div class="admin-empty"><span>✓</span><strong>درخواست کسر ژتونِ در انتظار ندارید</strong><p>درخواست‌های جدید در این بخش نمایش داده می‌شوند.</p></div>')+'</section>'+
-      '<section class="admin-section" data-admin-section="deposits"><div class="admin-section-heading"><div><h3>تأیید شارژ ژتون آزمایشی</h3><p>درخواست‌های شارژ ژتون غیرنقدی در انتظار بررسی مدیر.</p></div><span class="admin-count">'+deposits.length+' درخواست</span></div>'+(deposits.length?'<div class="admin-request-list">'+deposits.map(x=>requestCard(x,true)).join("")+'</div>':'<div class="admin-empty"><span>✓</span><strong>درخواست شارژ ژتونِ در انتظار ندارید</strong><p>درخواست‌های جدید در این بخش نمایش داده می‌شوند.</p></div>')+'</section>'+
-      '<section class="admin-section" data-admin-section="users"><div class="admin-section-heading"><div><h3>کاربران و موجودی ژتون</h3><p>مدیریت موجودی آزمایشی کاربران.</p></div><span class="admin-count">'+users.length+' کاربر</span></div>'+(users.length?users.map(u=>'<article class="user-row admin-user-card"><strong>'+esc(u.display_name||u.username)+'</strong><small>@'+esc(u.username)+' · '+esc(u.role)+' · موجودی: '+Number(u.demo_chips).toLocaleString("fa-IR")+' ژتون</small><label>تغییر موجودی (+ شارژ / − کسر)</label><input type="number" id="chip-adjust-'+u.id+'" placeholder="مثلاً 50000 یا -20000"><input id="chip-note-'+u.id+'" placeholder="دلیل تغییر موجودی"><button data-adjust-user="'+u.id+'">ثبت تغییر ژتون</button></article>').join(""):'<p>کاربری پیدا نشد.</p>')+'</section>';
+      '<section class="admin-section" data-admin-section="withdrawals"><div class="admin-section-heading"><div><h3>تأیید برداشت ژتون</h3><p>درخواست‌های کسر ژتون در انتظار بررسی مدیر.</p></div><span class="admin-count">'+withdrawals.length+' درخواست</span></div>'+(withdrawals.length?'<div class="admin-request-list">'+withdrawals.map(x=>requestCard(x,false)).join("")+'</div>':'<div class="admin-empty"><span>✓</span><strong>درخواست برداشت ژتونِ در انتظار ندارید</strong><p>درخواست‌های جدید در این بخش نمایش داده می‌شوند.</p></div>')+'</section>'+
+      '<section class="admin-section" data-admin-section="deposits"><div class="admin-section-heading"><div><h3>تأیید شارژ ژتون</h3><p>درخواست‌های شارژ ژتون در انتظار بررسی مدیر.</p></div><span class="admin-count">'+deposits.length+' درخواست</span></div>'+(deposits.length?'<div class="admin-request-list">'+deposits.map(x=>requestCard(x,true)).join("")+'</div>':'<div class="admin-empty"><span>✓</span><strong>درخواست شارژ ژتونِ در انتظار ندارید</strong><p>درخواست‌های جدید در این بخش نمایش داده می‌شوند.</p></div>')+'</section>'+
+      '<section class="admin-section" data-admin-section="users"><div class="admin-section-heading"><div><h3>کاربران و موجودی ژتون</h3><p>مدیریت موجودی کاربران.</p></div><span class="admin-count">'+users.length+' کاربر</span></div>'+(users.length?users.map(u=>'<article class="user-row admin-user-card"><strong>'+esc(u.display_name||u.username)+'</strong><small>@'+esc(u.username)+' · '+esc(u.role)+' · موجودی: '+Number(u.demo_chips).toLocaleString("fa-IR")+' ریال · ژتون</small><label>تغییر موجودی (+ شارژ / − کسر)</label><input type="number" id="chip-adjust-'+u.id+'" placeholder="مثلاً 50000 یا -20000"><input id="chip-note-'+u.id+'" placeholder="دلیل تغییر موجودی"><button data-adjust-user="'+u.id+'">ثبت تغییر ژتون</button></article>').join(""):'<p>کاربری پیدا نشد.</p>')+'</section>';
     body.querySelectorAll("[data-admin-tab]").forEach(tab=>tab.onclick=()=>{
       body.querySelectorAll("[data-admin-tab]").forEach(x=>x.classList.toggle("active",x===tab));
       body.querySelectorAll("[data-admin-section]").forEach(x=>x.classList.toggle("active",x.dataset.adminSection===tab.dataset.adminTab));
@@ -188,7 +188,7 @@
   }
   let stakes=[20000,30000,40000,50000,50000,60000,70000,80000,90000,100000];
   let tableStatuses=Array(10).fill("waiting"),tableCapacities=Array(10).fill(6);
-  function cash(n){return Number(n||0).toLocaleString("fa-IR");}
+  function cash(n){return Number(n||0).toLocaleString("fa-IR")+" ریال";}
   function escapeHtml(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");}
   function cardHtml(card,small=false,animate=false,index=0){
     if(!card)return "";
@@ -275,7 +275,7 @@
       if(game?.status==="playing"&&!isMe&&animateHiddenBack){seenCardKeys.add(hiddenBackKey);newCardDealtThisRender=true;}
       const hiddenBack=game?.status==="playing"&&!isMe?'<span class="card-back playing-card '+(animateHiddenBack?'deal-in':'')+'" style="--deal-delay:'+(i*55)+'ms"></span>':"";
       const shownCards=revealedCards || privateCards || hiddenBack;
-      return '<div class="seat s'+i+' '+(isMe?"active ":"")+(isBanker?"banker ":"")+(isActive?"turn-active ":"")+(isPaused?"paused-player ":"")+'"><div class="avatar">'+(isBanker?"👑":"👤")+'</div><div class="name">'+name+'</div><div class="tag">'+(isBanker?"بانکدار":isPaused?"⏸ موقتاً آفلاین":isActive?"◀ نوبت فعلی":isMe?"شما":"بازیکن")+' · صندلی '+p.seat_no+'</div><div class="cards">'+shownCards+'</div><div class="seat-balance">موجودی: '+cash(p.profiles?.demo_chips||0)+' ژتون</div></div>';
+      return '<div class="seat s'+i+' '+(isMe?"active ":"")+(isBanker?"banker ":"")+(isActive?"turn-active ":"")+(isPaused?"paused-player ":"")+'"><div class="avatar">'+(isBanker?"👑":"👤")+'</div><div class="name">'+name+'</div><div class="tag">'+(isBanker?"بانکدار":isPaused?"⏸ موقتاً آفلاین":isActive?"◀ نوبت فعلی":isMe?"شما":"بازیکن")+' · صندلی '+p.seat_no+'</div><div class="cards">'+shownCards+'</div><div class="seat-balance">موجودی: '+cash(p.profiles?.demo_chips||0)+' ریال · ژتون</div></div>';
     }).join("");
     const statusText=gameError?"خطای دریافت وضعیت بازی: "+gameError.message:(game?.message||"در انتظار شروع بازی");
     $("status").textContent=statusText;
@@ -297,7 +297,7 @@
       if(window.play21Fx)window.play21Fx("chips");
     }
     lastVisualBankAmount=bankAmount;
-    $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableIndex])+" ژتون آزمایشی · ظرفیت ۶ نفر · "+seats.length+" بازیکن حاضر";
+    $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableIndex])+" ژتون · ظرفیت ۶ نفر · "+seats.length+" بازیکن حاضر";
     const isMyTurn=!!game&&!gameError&&game.status==="playing"&&game.active_user_id===me;
     const isPausedMe=!!me&&(game?.paused_users||[]).includes(me);
     $("drawCardBtn").dataset.action=isPausedMe?"resume":"draw";
@@ -481,7 +481,7 @@
     const client=window.supabase21Game,user=window.current21GameUser;
     if(!client||!user){alert("برای ورود به میز ابتدا وارد حساب شوید.");return;}
     const stake=stakes[i];
-    if(Number(user.demo_chips||0)<stake*4){alert("برای این میز حداقل "+cash(stake*4)+" ژتون آزمایشی لازم است. از منو درخواست شارژ ژتون بدهید.");return;}
+    if(Number(user.demo_chips||0)<stake*4){alert("برای این میز حداقل "+cash(stake*4)+" ژتون لازم است. از منو درخواست شارژ ژتون بدهید.");return;}
     try{
       const {error:cleanupError}=await client.rpc("game_cleanup_stale_players");
       if(cleanupError)console.warn("stale-seat cleanup before join:",cleanupError.message);
