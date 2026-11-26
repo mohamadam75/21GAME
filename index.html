@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>بازی ۲۱</title>
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -17,7 +17,7 @@
     </div>
   </div>
   <div class="header-right">
-    <div class="balance"><span id="signedInName">مهمان</span> · ژتون آزمایشی: <strong id="wallet">۰</strong></div><button id="signOutBtn" class="signout-btn hidden" type="button">خروج</button>
+    <div class="balance"><span id="signedInName">مهمان</span> · موجودی ژتون: <strong id="wallet">۰</strong> ریال</div><button id="signOutBtn" class="signout-btn hidden" type="button">خروج</button>
   </div>
 </header>
 
@@ -28,8 +28,8 @@
   </div>
   <button id="rulesBtn" class="menu-item">📖 قوانین بازی</button>
   <button id="balanceBtn" class="menu-item">💰 موجودی و شارژ حساب</button>
-  <button id="withdrawBtn" class="menu-item">💸 درخواست کسر ژتون آزمایشی</button>
-  <button id="chipRequestBtn" class="menu-item">🪙 درخواست شارژ ژتون آزمایشی</button>
+  <button id="withdrawBtn" class="menu-item">💸 درخواست برداشت ژتون</button>
+  <button id="chipRequestBtn" class="menu-item">🪙 درخواست شارژ ژتون</button>
   <button id="profileSettingsBtn" class="menu-item">👤 تنظیمات حساب</button>
   <button id="adminPanelBtn" class="menu-item hidden">🛠 تنظیمات مدیریت</button>
 </aside>
@@ -74,7 +74,7 @@
 <main>
   <section class="hero">
     <h2>انتخاب میز</h2>
-    <p>میز را انتخاب کنید. حداقل موجودی ورود ۴ برابر مبلغ پایه است.</p><small class="demo-disclaimer">ژتون‌های این نسخه غیرنقدی هستند و ارزش پولی یا قابلیت برداشت واقعی ندارند.</small>
+    <p>میز را انتخاب کنید. حداقل موجودی ورود ۴ برابر مبلغ پایه است.</p><small class="demo-disclaimer">ژتون‌ها برای استفاده در بازی هستند و قابل تبدیل به پول واقعی نیستند.</small>
   </section>
   <section id="tables" class="tables"></section>
 </main>
@@ -141,7 +141,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-config.js"></script>
-<script src="auth.js?v=21"></script>
-<script src="script.js?v=3"></script>
+<script src="auth.js?v=22"></script>
+<script src="script.js?v=4"></script>
 </body>
 </html>
