@@ -85,6 +85,7 @@
   let voiceEnabled=false, localStream=null, shownAskechiRound=null, askechiVisibleUntil=0;
   let visualTableId=null, visualRound=null, lastVisualBankAmount=null;
   const seenCardKeys=new Set();
+  let newCardDealtThisRender=false;
   let pauseKickTimer=null, pausedTableId=null;
   function clearPauseKickTimer(){if(pauseKickTimer)clearTimeout(pauseKickTimer);pauseKickTimer=null;pausedTableId=null;}
   function schedulePauseKick(tableId){
@@ -121,6 +122,7 @@
       const key=[visualTableId,visualRound,userId,index,card.rank,card.suit].join(":");
       const animate=!seenCardKeys.has(key);
       seenCardKeys.add(key);
+      if(animate)newCardDealtThisRender=true;
       return cardHtml(card,small,animate,index);
     }).join("");
   }
@@ -176,6 +178,7 @@
       setTimeout(()=>{if(seatedTable===tableId)renderLobby(tableIndex).catch(console.error);},2450);
     }
     const showAskechi=Date.now()<askechiVisibleUntil;
+    newCardDealtThisRender=false;
     $("seats").innerHTML=Array.from({length:6},(_,i)=>{
       const p=seats.find(s=>s.seat_no===i+1);
       if(!p)return '<div class="seat s'+i+'"><div class="avatar">＋</div><div class="name">صندلی خالی</div><div class="tag"></div><div class="cards"></div><div class="seat-balance">—</div></div>';
@@ -191,7 +194,7 @@
     const statusText=gameError?"خطای دریافت وضعیت بازی: "+gameError.message:(game?.message||"در انتظار شروع بازی");
     $("status").textContent=statusText;
     $("handInfo").innerHTML=gameError?"وضعیت کارت‌ها دریافت نشد.":("کارت‌های شما: "+((game?.my_hand||[]).map(x=>cardHtml(x)).join(" ")||"—")+" · امتیاز: "+(game?.my_score||0));
-    if(!gameError&&window.play21Fx&&seenCardKeys.size)window.play21Fx("card");
+    if(!gameError&&newCardDealtThisRender&&window.play21Fx)window.play21Fx("card");
     $("cardChoices").innerHTML="";
     $("bankAmount").textContent=cash(game?.bank_amount??stakes[tableIndex]*3);
     const bankAmount=Number(game?.bank_amount??stakes[tableIndex]*3);
@@ -199,7 +202,7 @@
     const bankIncreased=lastVisualBankAmount!==null&&bankAmount>lastVisualBankAmount;
     const chipCount=Math.max(0,Math.min(12,Math.round(bankAmount/stakes[tableIndex])));
     $("bankChips").innerHTML=chipCount?Array.from({length:chipCount},(_,i)=>'<span class="chip-token chip-'+(i%4)+(bankChanged?' chip-arrive':'')+'" style="--chip-index:'+i+'"></span>').join(""):'<span class="empty-bank">بانک بازی</span>';
-    if(bankIncreased&&window.play21Fx)window.play21Fx("chips");
+    if(bankChanged&&lastVisualBankAmount!==null&&window.play21Fx)window.play21Fx("chips");
     lastVisualBankAmount=bankAmount;
     $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableIndex])+" ژتون آزمایشی · ظرفیت ۶ نفر · "+seats.length+" بازیکن حاضر";
     const isMyTurn=!!game&&!gameError&&game.status==="playing"&&game.active_user_id===me;
