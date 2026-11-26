@@ -27,7 +27,6 @@ Deno.test("authenticated endpoint forwards Bearer token and client IP, returns I
   });
   const response = await handleRequest(request, {
     token: secret,
-    getClientIp: () => "203.0.113.8",
     fetchImpl: async (input, init) => {
       capturedUrl = String(input);
       capturedInit = init;
