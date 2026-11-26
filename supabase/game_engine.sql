@@ -435,6 +435,8 @@ begin
   if not exists(select 1 from public.table_seats where table_id=p_table_id and user_id=caller) then
     raise exception 'not_seated_at_table';
   end if;
+  perform 1 from public.game_tables where id=p_table_id for update;
+  if not found then raise exception 'table_not_found'; end if;
   select * into ps from public.table_public_state where table_id=p_table_id for update;
   if not found or ps.status<>'playing' or ps.active_user_id is null then
     return jsonb_build_object('advanced',false);
