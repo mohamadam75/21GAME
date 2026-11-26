@@ -126,11 +126,12 @@ window.setAuthenticatedWallet = function(value) { wallet = Math.max(0, Number(va
 
 function renderTables() {
   $("tables").innerHTML = tables.map((base, i) => {
+    if(!base || tableStatuses[i] === "maintenance") return "";
     const ok = wallet >= base * 4;
     return `<article class="table-card">
       <h3>میز ${i + 1}</h3>
-      <div class="amount">${money(base)} ژتون</div>
-      <div class="meta">حداقل موجودی: ${money(base * 4)} ژتون<br>ظرفیت: ۲ تا ۶ نفر<br><strong class="online-count" id="onlineCount${i}">آنلاین: ${Number(tableOccupancy[i]||0).toLocaleString("fa-IR")} نفر</strong></div>
+      <div class="amount">${money(base)} ریال · ژتون</div>
+      <div class="meta">حداقل موجودی: ${money(base * 4)} ریال<br>ظرفیت: ۲ تا ۶ نفر<br><strong class="online-count" id="onlineCount${i}">آنلاین: ${Number(tableOccupancy[i]||0).toLocaleString("fa-IR")} نفر</strong></div>
       <button class="join" ${ok ? "" : "disabled"} onclick="joinTable(${i})">${ok ? "ورود به میز" : "موجودی کافی نیست"}</button>
     </article>`;
   }).join("");
