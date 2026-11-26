@@ -38,18 +38,23 @@ create or replace function public.admin_update_table(p_table_id integer,p_stake 
 returns public.game_tables
 language plpgsql security definer set search_path=public
 as $$
-declare result public.game_tables;
+declare result public.game_tables; current_table public.game_tables; game_status text;
 begin
   if not public.is_admin() then raise exception 'admin_only'; end if;
-  if p_stake<1 or p_stake>1000000000000 then raise exception 'invalid_stake'; end if;
+  if p_stake<1 or p_stake>10000000000000 then raise exception 'invalid_stake'; end if;
   if p_capacity<2 or p_capacity>6 then raise exception 'invalid_capacity'; end if;
   if p_status not in ('waiting','maintenance') then raise exception 'invalid_table_status'; end if;
-  if exists(select 1 from public.table_public_state where table_id=p_table_id and status='playing') then
-    raise exception 'table_game_running';
+  select * into current_table from public.game_tables where id=p_table_id for update;
+  if not found then raise exception 'table_not_found'; end if;
+  select status into game_status from public.table_public_state where table_id=p_table_id;
+  if game_status='playing' and (p_stake<>current_table.stake or p_capacity<>current_table.capacity) then
+    raise exception 'table_game_running_settings_locked';
+  end if;
+  if game_status='playing' and p_status='waiting' then
+    raise exception 'table_game_running_cannot_reactivate';
   end if;
   update public.game_tables set stake=p_stake,capacity=p_capacity,status=p_status
     where id=p_table_id returning * into result;
-  if not found then raise exception 'table_not_found'; end if;
   return result;
 end;
 $$;
