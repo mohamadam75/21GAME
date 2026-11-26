@@ -156,29 +156,11 @@
     (data||[]).forEach(row=>{const i=Number(row.table_id)-1;if(i>=0&&i<counts.length)counts[i]++;});
     counts.forEach((n,i)=>{const el=$("onlineCount"+i);if(el)el.textContent="آنلاین: "+cash(n)+" نفر";});
   }
-  function scheduleTurnAutoAction(tableId,game,me,isMyTurn){
-    const hand=Array.isArray(game?.my_hand)?game.my_hand:[];
-    const score=Number(game?.my_score||0);
-    let action=null,delay=null;
-    if(isMyTurn&&game?.status==="playing"){
-      if(game?.is_banker){
-        if(score<18&&hand.length<5){action="draw";delay=12000;}
-        else {action="close";delay=12000;}
-      }else{
-        if(score<17&&hand.length<5){action="draw";delay=12000;}
-        else {action="stand";delay=12000;}
-      }
-    }
-    const key=action?[tableId,game?.round_no,me,game?.phase,hand.length,score,action].join(":"):null;
-    if(key===autoTurnTimerKey)return;
+  function scheduleTurnAutoAction(){
+    // Auto-play is server-authoritative; a browser timer must never bypass the two-hand limit.
     if(autoTurnTimer)clearTimeout(autoTurnTimer);
-    autoTurnTimer=null;autoTurnTimerKey=key;
-    if(!key)return;
-    autoTurnTimer=setTimeout(()=>{
-      autoTurnTimer=null;
-      if(autoTurnTimerKey!==key||seatedTable!==tableId||actionInFlight)return;
-      sendGameAction(action).catch(console.error);
-    },delay);
+    autoTurnTimer=null;
+    autoTurnTimerKey=null;
   }
   async function renderLobby(tableIndex){
     const client=window.supabase21Game, tableId=tableIndex+1;
