@@ -196,7 +196,7 @@
   }
   let stakes=[200000,300000,400000,500000,500000,600000,700000,800000,900000,1000000];
   let tableStatuses=Array(10).fill("waiting"),tableCapacities=Array(10).fill(6);
-  function cash(n){return Number(n||0).toLocaleString("fa-IR")+" ریال";}
+  function cash(n){return Number(n||0).toLocaleString("fa-IR");}
   function escapeHtml(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");}
   function cardHtml(card,small=false,animate=false,index=0){
     if(!card)return "";
@@ -290,7 +290,7 @@
     $("handInfo").innerHTML=gameError?"وضعیت کارت‌ها دریافت نشد.":("آس‌کشی: "+((game?.askechi_cards||[]).map(x=>escapeHtml(x.card?.rank||"")+" "+escapeHtml(x.card?.suit||"")).join("، ")||"—")+" · کارت‌های شما: "+((game?.my_hand||[]).map(x=>cardHtml(x)).join(" ")||"—")+" · امتیاز: "+(game?.my_score||0)+" · ترتیب نوبت: خلاف عقربه ساعت از نفر بعدِ بانکدار");
     if(!gameError&&newCardDealtThisRender&&window.play21Fx)window.play21Fx("card");
     $("cardChoices").innerHTML="";
-    $("bankAmount").textContent=cash(game?.bank_amount??stakes[tableIndex]*3);
+    $("bankAmount").textContent=cash(game?.bank_amount??stakes[tableIndex]*3)+" ریال";
     const bankAmount=Number(game?.bank_amount??stakes[tableIndex]*3);
     const previousBankAmount=lastVisualBankAmount;
     const bankChanged=previousBankAmount===null||bankAmount!==previousBankAmount;
@@ -305,7 +305,7 @@
       if(window.play21Fx)window.play21Fx("chips");
     }
     lastVisualBankAmount=bankAmount;
-    $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableIndex])+" ژتون · ظرفیت ۶ نفر · "+seats.length+" بازیکن حاضر";
+    $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableIndex])+" ریال · ژتون · ظرفیت ۶ نفر · "+seats.length+" بازیکن حاضر";
     const isMyTurn=!!game&&!gameError&&game.status==="playing"&&game.active_user_id===me;
     const isPausedMe=!!me&&(game?.paused_users||[]).includes(me);
     $("drawCardBtn").dataset.action=isPausedMe?"resume":"draw";
@@ -504,9 +504,9 @@
       return '<div class="seat s'+i+' '+(banker?"banker ":"")+(active?"turn-active ":"")+'"><div class="avatar">'+(banker?"👑":"👤")+'</div><div class="name">'+name+'</div><div class="tag">'+(banker?"بانکدار":active?"◀ نوبت فعلی":"تماشاگر")+' · صندلی '+p.seat_no+'</div><div class="cards">'+cards+'</div><div class="seat-balance">موجودی: '+cash(p.profiles?.demo_chips||0)+' · ژتون</div></div>';
     }).join("");
     $("status").textContent=state.public_message|| (state.status==="playing"?"بازی در جریان است":"در انتظار شروع بازی");
-    $("bankAmount").textContent=cash(state.bank_amount||0);
+    $("bankAmount").textContent=cash(state.bank_amount||0)+" ریال";
     $("bankChips").textContent=state.bank_amount? "🪙 ژتون‌های بانک":"—";
-    $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableId-1])+" · "+seats.length+" بازیکن حاضر · حالت تماشا";
+    $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableId-1])+" ریال · "+seats.length+" بازیکن حاضر · حالت تماشا";
     $("handInfo").textContent="شما فقط تماشاگر هستید؛ امکان کشیدن کارت یا تغییر بازی ندارید.";
     $("cardChoices").innerHTML="";
     ["startGameBtn","drawCardBtn","standBtn","closeBankBtn","nextPlayerBtn","nextRoundBtn"].forEach(id=>$(id).classList.add("hidden"));
