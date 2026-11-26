@@ -125,7 +125,7 @@
 /* Live lobby, private hand display, shared chat and WebRTC voice. */
 (function(){
   const $=id=>document.getElementById(id);
-  let channel=null, chatChannel=null, voiceChannel=null, seatedTable=null, presenceTimer=null, actionInFlight=false, autoTurnTimer=null, autoTurnTimerKey=null;
+  let channel=null, chatChannel=null, voiceChannel=null, seatedTable=null, spectatorTable=null, spectatorChannel=null, presenceTimer=null, actionInFlight=false, autoTurnTimer=null, autoTurnTimerKey=null;
   let voiceEnabled=false, localStream=null;
   let visualTableId=null, visualRound=null, lastVisualBankAmount=null, renderSequence=0, autoTickTimer=null;
   const seenCardKeys=new Set();
@@ -485,6 +485,56 @@
     });});
     await loadChat();
   }
+  async function renderSpectatorLobby(tableId){
+    const client=window.supabase21Game;
+    const [seatResult,stateResult]=await Promise.all([
+      client.from("table_seats").select("seat_no,user_id,profiles(username,display_name,demo_chips)").eq("table_id",tableId).order("seat_no"),
+      client.from("table_public_state").select("status,banker_user_id,active_user_id,bank_amount,round_no,public_message").eq("table_id",tableId).maybeSingle()
+    ]);
+    if(seatResult.error)throw seatResult.error;
+    if(stateResult.error)throw stateResult.error;
+    if(spectatorTable!==tableId)return;
+    const seats=seatResult.data||[],state=stateResult.data||{};
+    $("seats").innerHTML=Array.from({length:6},(_,i)=>{
+      const p=seats.find(x=>x.seat_no===i+1);
+      if(!p)return '<div class="seat s'+i+'"><div class="avatar">＋</div><div class="name">صندلی خالی</div><div class="tag"></div><div class="cards"></div></div>';
+      const banker=state.banker_user_id===p.user_id,active=state.active_user_id===p.user_id;
+      const name=escapeHtml(p.profiles?.display_name||p.profiles?.username||"بازیکن");
+      const cards=state.status==="playing"?'<span class="card-back playing-card"></span>':"";
+      return '<div class="seat s'+i+' '+(banker?"banker ":"")+(active?"turn-active ":"")+'"><div class="avatar">'+(banker?"👑":"👤")+'</div><div class="name">'+name+'</div><div class="tag">'+(banker?"بانکدار":active?"◀ نوبت فعلی":"تماشاگر")+' · صندلی '+p.seat_no+'</div><div class="cards">'+cards+'</div><div class="seat-balance">موجودی: '+cash(p.profiles?.demo_chips||0)+' · ژتون</div></div>';
+    }).join("");
+    $("status").textContent=state.public_message|| (state.status==="playing"?"بازی در جریان است":"در انتظار شروع بازی");
+    $("bankAmount").textContent=cash(state.bank_amount||0);
+    $("bankChips").textContent=state.bank_amount? "🪙 ژتون‌های بانک":"—";
+    $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableId-1])+" · "+seats.length+" بازیکن حاضر · حالت تماشا";
+    $("handInfo").textContent="شما فقط تماشاگر هستید؛ امکان کشیدن کارت یا تغییر بازی ندارید.";
+    $("cardChoices").innerHTML="";
+    ["startGameBtn","drawCardBtn","standBtn","closeBankBtn","nextPlayerBtn","nextRoundBtn"].forEach(id=>$(id).classList.add("hidden"));
+    $("leaveOnlineTable").classList.add("hidden");$("pauseOnlineTable").classList.add("hidden");
+    $("voiceBtn").classList.add("hidden");$("chatBtn").classList.add("hidden");
+  }
+  async function leaveSpectator(){
+    if(spectatorChannel){await window.supabase21Game.removeChannel(spectatorChannel);spectatorChannel=null;}
+    spectatorTable=null;$("leaveSpectator").classList.add("hidden");$("modal").classList.add("hidden");
+    $("voiceBtn").classList.remove("hidden");$("chatBtn").classList.remove("hidden");
+    await refreshOccupancy();
+  }
+  async function watchOnlineTable(i){
+    const client=window.supabase21Game,user=window.current21GameUser,tableId=i+1;
+    if(!client||!user){alert("برای تماشای میز ابتدا وارد حساب شوید.");return;}
+    if(seatedTable){alert("ابتدا از میز فعلی خارج شوید، سپس می‌توانید تماشاگر شوید.");return;}
+    if(spectatorChannel)await client.removeChannel(spectatorChannel);
+    spectatorTable=tableId;
+    $("modalTitle").textContent="تماشای میز "+tableId;
+    $("modal").classList.remove("hidden");$("leaveSpectator").classList.remove("hidden");
+    try{
+      await renderSpectatorLobby(tableId);
+      spectatorChannel=client.channel("spectator-table-"+tableId)
+        .on("postgres_changes",{event:"*",schema:"public",table:"table_seats",filter:"table_id=eq."+tableId},()=>renderSpectatorLobby(tableId).catch(console.error))
+        .on("postgres_changes",{event:"*",schema:"public",table:"table_public_state",filter:"table_id=eq."+tableId},()=>renderSpectatorLobby(tableId).catch(console.error))
+        .subscribe();
+    }catch(e){alert("نمایش میز انجام نشد: "+(e.message||e));await leaveSpectator();}
+  }
   async function joinOnlineTable(i){
     const client=window.supabase21Game,user=window.current21GameUser;
     if(!client||!user){alert("برای ورود به میز ابتدا وارد حساب شوید.");return;}
@@ -544,8 +594,10 @@
     $("leaveOnlineTable").classList.add("hidden");$("pauseOnlineTable").classList.add("hidden");$("modal").classList.add("hidden");
   }
   window.addEventListener("DOMContentLoaded",()=>{
-    window.joinTable=joinOnlineTable;
+    window.joinTable=joinOnlineTable;window.watchTable=watchOnlineTable;
     $("leaveOnlineTable").addEventListener("click",leaveOnlineTable);
+    $("leaveSpectator").addEventListener("click",leaveSpectator);
+    $("closeModal").addEventListener("click",()=>{if(spectatorTable)leaveSpectator();});
     $("startGameBtn").addEventListener("click",()=>sendGameAction("start"));
     $("drawCardBtn").addEventListener("click",()=>sendGameAction($("drawCardBtn").dataset.action||"draw"));
     $("standBtn").addEventListener("click",()=>sendGameAction("stand"));
