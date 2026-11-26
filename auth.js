@@ -22,7 +22,7 @@
       '<input id="reqAmount" type="number" min="1" step="1" placeholder="مقدار ژتون" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">'+
       '<label>توضیح (اختیاری)</label>'+
       '<input id="reqRef" maxlength="250" placeholder="توضیح درخواست" style="width:100%;padding:12px;margin:8px 0;border-radius:8px;background:#1c283c;color:#fff;border:0">'+
-      '<p style="font-size:12px;color:#f3c77b;line-height:1.8">این بخش فقط برای مدیریت ژتون‌های غیرنقدی بازی است. هیچ پرداخت، واریز بانکی یا برداشت پول واقعی انجام نمی‌شود.</p>'+
+      '<p style="font-size:12px;color:#f3c77b;line-height:1.8">ژتون‌ها فقط برای استفاده در بازی هستند و قابل تبدیل به پول واقعی نیستند.</p>'+
       '<button id="reqSubmit">ثبت درخواست</button><p id="reqStatus"></p>';
     window.open21GameAccountModal(title,body);
     $("reqSubmit").onclick=async()=>{
