@@ -238,20 +238,25 @@ begin
           update public.profiles set demo_chips=demo_chips+t.stake where id=(gs->>'current_opponent')::uuid;
           insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by)
             values((gs->>'current_opponent')::uuid,t.stake,'game_win','برد؛ بانکدار از ۲۱ عبور کرد در میز '||p_table_id,banker);
+          insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by) values(banker,-t.stake,'game_loss','باخت مقابل بازیکن در میز '||p_table_id,banker);
           update public.table_public_state as state set bank_amount=greatest(0,state.bank_amount-t.stake) where state.table_id=p_table_id;
         end if;
         update public.table_public_state set status='settled',active_user_id=null,public_message='بانکدار از ۲۱ عبور کرد؛ دست تمام شد',updated_at=now() where table_id=p_table_id;
       elsif score>21 then
         gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
+        insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by) values(uid,-t.stake,'game_loss','باخت در میز '||p_table_id,banker);
+        insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by) values(banker,t.stake,'game_win','برد بانکدار در میز '||p_table_id,banker);
         update public.table_public_state as state set status='settled',active_user_id=null,public_message='بازیکن از ۲۱ عبور کرد؛ این دست باخت',bank_amount=state.bank_amount+t.stake,updated_at=now() where state.table_id=p_table_id;
       elsif score=21 then
         gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
         if uid=banker then
+          insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by) values(banker,t.stake,'game_win','برد بانکدار با ۲۱ در میز '||p_table_id,banker);
           update public.table_public_state as state set status='settled',active_user_id=null,public_message='بانکدار به ۲۱ رسید؛ دست تمام شد',bank_amount=state.bank_amount+t.stake,updated_at=now() where state.table_id=p_table_id;
         else
           update public.profiles set demo_chips=demo_chips+t.stake where id=uid;
           insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by)
             values(uid,t.stake,'game_win','برد با ۲۱ در میز '||p_table_id,banker);
+          insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by) values(banker,-t.stake,'game_loss','باخت بانکدار مقابل ۲۱ در میز '||p_table_id,banker);
           update public.table_public_state as state set status='settled',active_user_id=null,public_message='بازیکن به ۲۱ رسید؛ این دست برد',bank_amount=greatest(0,state.bank_amount-t.stake),updated_at=now() where state.table_id=p_table_id;
         end if;
       end if;
@@ -271,12 +276,15 @@ begin
           update public.profiles set demo_chips=demo_chips+t.stake where id=(gs->>'current_opponent')::uuid;
           insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by)
             values((gs->>'current_opponent')::uuid,t.stake,'game_win','برد در برابر بانکدار در میز '||p_table_id,banker);
+          insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by) values(banker,-t.stake,'game_loss','باخت بانکدار در میز '||p_table_id,banker);
           update public.table_public_state as state set bank_amount=greatest(0,state.bank_amount-t.stake) where state.table_id=p_table_id;
         end if;
       else
         if opponent_score=my_score then result_text:='مساوی؛ بانکدار برنده شد';
         elsif opponent_score>21 then result_text:='بازیکن از ۲۱ عبور کرد؛ بانکدار برنده شد';
         else result_text:='بانکدار برنده شد'; end if;
+        insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by) values(banker,t.stake,'game_win','برد بانکدار در میز '||p_table_id,banker);
+        if coalesce(gs->>'current_opponent','')<>'' then insert into public.wallet_ledger(user_id,amount,entry_type,note,created_by) values((gs->>'current_opponent')::uuid,-t.stake,'game_loss','باخت در برابر بانکدار در میز '||p_table_id,banker); end if;
         update public.table_public_state as state set bank_amount=state.bank_amount+t.stake where state.table_id=p_table_id;
       end if;
       gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
