@@ -200,6 +200,7 @@ begin
       raise exception 'banker_must_finish_turn_before_pause';
     end if;
     gs:=jsonb_set(gs,'{paused_users}',coalesce(gs->'paused_users','[]'::jsonb)||jsonb_build_array(uid),true);
+    gs:=jsonb_set(gs,'{paused_at}',coalesce(gs->'paused_at','{}'::jsonb)||jsonb_build_object(uid::text,now()),true);
     if ps.status='playing' and ps.active_user_id=uid then
       gs:=jsonb_set(gs,'{phase}','"banker_turn"'::jsonb,true);
       gs:=jsonb_set(gs,'{banker_turn}','true'::jsonb,true);
@@ -212,6 +213,7 @@ begin
     gs:=coalesce(priv.game_state,'{}'::jsonb);
     select coalesce(jsonb_agg(p.value),'[]'::jsonb) into v_deck from jsonb_array_elements(coalesce(gs->'paused_users','[]'::jsonb)) as p(value) where p.value#>>'{}'<>uid::text;
     gs:=jsonb_set(gs,'{paused_users}',coalesce(v_deck,'[]'::jsonb),true);
+    gs:=jsonb_set(gs,'{paused_at}',coalesce(gs->'paused_at','{}'::jsonb)-uid::text,true);
     if coalesce(gs->>'paused_active_user','')=uid::text and ps.status='playing' and ps.active_user_id is null then
       update public.table_public_state set active_user_id=uid,public_message='بازیکن برگشت؛ نوبت او ادامه دارد',updated_at=now() where table_id=p_table_id;
       gs:=gs-'paused_active_user';
@@ -353,6 +355,7 @@ declare
   priv public.table_private_state;
   gs jsonb;
   stake_amount bigint;
+  remaining_paused jsonb;
 begin
   if uid is null then raise exception 'login_required'; end if;
   perform 1 from public.game_tables where id=p_table_id for update;
@@ -376,13 +379,20 @@ begin
       where table_id=p_table_id;
     update public.table_private_state set deck='[]'::jsonb,hands='{}'::jsonb,game_state='{}'::jsonb,updated_at=now()
       where table_id=p_table_id;
-  elsif ps.status='playing' and coalesce(gs->>'current_opponent','')=uid::text then
-    gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
-    gs:=jsonb_set(gs,'{abandoned_opponent}','true'::jsonb,true);
-    update public.table_public_state set status='settled',active_user_id=null,
-      bank_amount=coalesce(bank_amount,0)+stake_amount,
-      public_message='بازیکن پس از ۵ دقیقه عدم حضور حذف شد؛ دست به نفع بانکدار تمام شد',updated_at=now()
-      where table_id=p_table_id;
+  else
+    select coalesce(jsonb_agg(value),'[]'::jsonb) into remaining_paused
+    from jsonb_array_elements(coalesce(gs->'paused_users','[]'::jsonb)) as p(value)
+    where p.value#>>'{}'<>uid::text;
+    gs:=jsonb_set(gs,'{paused_users}',coalesce(remaining_paused,'[]'::jsonb),true);
+    gs:=jsonb_set(gs,'{paused_at}',coalesce(gs->'paused_at','{}'::jsonb)-uid::text,true);
+    if ps.status='playing' and coalesce(gs->>'current_opponent','')=uid::text then
+      gs:=jsonb_set(gs,'{phase}','"settled"'::jsonb,true);
+      gs:=jsonb_set(gs,'{abandoned_opponent}','true'::jsonb,true);
+      update public.table_public_state set status='settled',active_user_id=null,
+        bank_amount=coalesce(bank_amount,0)+stake_amount,
+        public_message='بازیکن پس از ۵ دقیقه عدم حضور حذف شد؛ دست به نفع بانکدار تمام شد',updated_at=now()
+        where table_id=p_table_id;
+    end if;
     update public.table_private_state set game_state=gs,updated_at=now() where table_id=p_table_id;
   end if;
   delete from public.table_seats where table_id=p_table_id and user_id=uid;
@@ -448,6 +458,7 @@ declare
   auto_count integer;
   old_claim text;
   result_data jsonb;
+  stale_user uuid;
 begin
   if caller is null then raise exception 'login_required'; end if;
   if not exists(select 1 from public.table_seats where table_id=p_table_id and user_id=caller) then
@@ -456,23 +467,38 @@ begin
   perform 1 from public.game_tables where id=p_table_id for update;
   if not found then raise exception 'table_not_found'; end if;
   select * into ps from public.table_public_state where table_id=p_table_id for update;
-  if not found or ps.status<>'playing' or ps.active_user_id is null then
+  if ps.table_id is null then
+    return jsonb_build_object('advanced',false);
+  end if;
+  select * into priv from public.table_private_state where table_id=p_table_id for update;
+  select p.key::uuid into stale_user
+  from jsonb_each_text(coalesce(priv.game_state->'paused_at','{}'::jsonb)) as p(key,value)
+  where p.value::timestamptz <= now()-interval '5 minutes'
+  order by p.value::timestamptz asc
+  limit 1;
+  if stale_user is not null then
+    old_claim:=current_setting('request.jwt.claim.sub',true);
+    perform set_config('request.jwt.claim.sub',stale_user::text,true);
+    result_data:=public.game_kick_paused_player(p_table_id);
+    perform set_config('request.jwt.claim.sub',coalesce(old_claim,''),true);
+    return jsonb_build_object('advanced',false,'kicked',true,'result',result_data);
+  end if;
+  if ps.status<>'playing' or ps.active_user_id is null then
     return jsonb_build_object('advanced',false);
   end if;
   if ps.updated_at > now()-interval '12 seconds' then
     return jsonb_build_object('advanced',false,'waiting',true);
   end if;
-  select * into priv from public.table_private_state where table_id=p_table_id for update;
   auto_hands:=coalesce(priv.game_state->'auto_hands','{}'::jsonb);
   auto_count:=coalesce((auto_hands->>ps.active_user_id::text)::integer,0);
   if auto_count>=2 then
-    update public.table_private_state
-      set game_state=jsonb_set(
-        jsonb_set(coalesce(game_state,'{}'::jsonb),'{paused_users}',
-          coalesce(game_state->'paused_users','[]'::jsonb)||jsonb_build_array(ps.active_user_id),true),
-        '{paused_active_user}',to_jsonb(ps.active_user_id::text),true),
-        updated_at=now()
-      where table_id=p_table_id;
+    auto_hands:=coalesce(priv.game_state,'{}'::jsonb);
+    auto_hands:=jsonb_set(auto_hands,'{paused_users}',
+      coalesce(auto_hands->'paused_users','[]'::jsonb)||jsonb_build_array(ps.active_user_id),true);
+    auto_hands:=jsonb_set(auto_hands,'{paused_active_user}',to_jsonb(ps.active_user_id::text),true);
+    auto_hands:=jsonb_set(auto_hands,'{paused_at}',
+      coalesce(auto_hands->'paused_at','{}'::jsonb)||jsonb_build_object(ps.active_user_id::text,now()),true);
+    update public.table_private_state set game_state=auto_hands,updated_at=now() where table_id=p_table_id;
     update public.table_public_state set active_user_id=null,
       public_message='بازیکن پس از دو دست خودکار موقتاً آفلاین شد؛ با بازگشت او بازی ادامه می‌یابد',
       updated_at=now() where table_id=p_table_id;
