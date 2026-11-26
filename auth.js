@@ -82,8 +82,8 @@
 (function(){
   const $=id=>document.getElementById(id);
   let channel=null, chatChannel=null, voiceChannel=null, seatedTable=null, actionInFlight=false, autoTurnTimer=null, autoTurnTimerKey=null;
-  let voiceEnabled=false, localStream=null, shownAskechiRound=null, askechiVisibleUntil=0;
-  let visualTableId=null, visualRound=null, lastVisualBankAmount=null;
+  let voiceEnabled=false, localStream=null;
+  let visualTableId=null, visualRound=null, lastVisualBankAmount=null, renderSequence=0, autoTickTimer=null;
   const seenCardKeys=new Set();
   let newCardDealtThisRender=false;
   let pauseKickTimer=null, pausedTableId=null;
@@ -162,13 +162,11 @@
     let action=null,delay=null;
     if(isMyTurn&&game?.status==="playing"){
       if(game?.is_banker){
-        // Banker keeps drawing until at least 18, regardless of hand length.
-        if(score<18){action="draw";delay=10000;}
-        else {action="close";delay=350;}
+        if(score<18&&hand.length<5){action="draw";delay=12000;}
+        else {action="close";delay=12000;}
       }else{
-        if(hand.length===1){action="draw";delay=15000;}
-        else if(hand.length===2&&score<=16){action="draw";delay=10000;}
-        else if(hand.length===2&&score>=18){action="stand";delay=350;}
+        if(score<17&&hand.length<5){action="draw";delay=12000;}
+        else {action="stand";delay=12000;}
       }
     }
     const key=action?[tableId,game?.round_no,me,game?.phase,hand.length,score,action].join(":"):null;
@@ -184,21 +182,20 @@
   }
   async function renderLobby(tableIndex){
     const client=window.supabase21Game, tableId=tableIndex+1;
-    const {data,error}=await client.from("table_seats").select("seat_no,user_id,profiles(username,display_name,demo_chips)").eq("table_id",tableId).order("seat_no");
-    if(error)throw error;
-    const seats=data||[];
-    const {data:game,error:gameError}=await client.rpc("game_my_hand",{p_table_id:tableId});
+    const sequence=++renderSequence;
+    const [seatResult,gameResult]=await Promise.all([
+      client.from("table_seats").select("seat_no,user_id,profiles(username,display_name,demo_chips)").eq("table_id",tableId).order("seat_no"),
+      client.rpc("game_my_hand",{p_table_id:tableId})
+    ]);
+    if(seatResult.error)throw seatResult.error;
+    if(sequence!==renderSequence||seatedTable!==tableId)return;
+    const seats=seatResult.data||[];
+    const game=gameResult.data,gameError=gameResult.error;
     const me=window.current21GameUser?.id;
-    const askechi=(!gameError&&Array.isArray(game?.askechi_cards))?game.askechi_cards:[];
     const nextRound=game?.round_no??"idle";
     if(visualTableId!==tableId||visualRound!==nextRound){
       visualTableId=tableId;visualRound=nextRound;lastVisualBankAmount=null;seenCardKeys.clear();
     }
-    if(!gameError&&game?.status==="playing"&&askechi.length&&shownAskechiRound!==game.round_no){
-      shownAskechiRound=game.round_no;askechiVisibleUntil=Date.now()+2400;
-      setTimeout(()=>{if(seatedTable===tableId)renderLobby(tableIndex).catch(console.error);},2450);
-    }
-    const showAskechi=Date.now()<askechiVisibleUntil;
     newCardDealtThisRender=false;
     $("seats").innerHTML=Array.from({length:6},(_,i)=>{
       const p=seats.find(s=>s.seat_no===i+1);
@@ -206,19 +203,18 @@
       const isMe=p.user_id===me, isBanker=!gameError&&game?.banker_user_id===p.user_id;
       const isActive=!gameError&&game?.active_user_id===p.user_id;
       const name=escapeHtml(p.profiles?.display_name||p.profiles?.username||"بازیکن");
-      const initialCards=showAskechi?renderCardList(askechi.filter(x=>x.user_id===p.user_id),true,p.user_id,true):"";
       const privateCards=isMe&&!gameError?renderCardList(game?.my_hand||[],true,p.user_id):"";
       const revealedCards=game?.status==="settled"?renderCardList(game?.revealed_hands?.[p.user_id]||[],true,p.user_id):"";
       const hiddenBackKey=[tableId,visualRound,p.user_id,"hidden-back"].join(":");
       const animateHiddenBack=!seenCardKeys.has(hiddenBackKey);
       if(game?.status==="playing"&&!isMe&&animateHiddenBack){seenCardKeys.add(hiddenBackKey);newCardDealtThisRender=true;}
       const hiddenBack=game?.status==="playing"&&!isMe?'<span class="card-back playing-card '+(animateHiddenBack?'deal-in':'')+'" style="--deal-delay:'+(i*55)+'ms"></span>':"";
-      const shownCards=initialCards || revealedCards || privateCards || hiddenBack;
-      return '<div class="seat s'+i+' '+(isMe?"active ":"")+(isBanker?"banker ":"")+(isActive?"turn-active":"")+'"><div class="avatar">'+(isBanker?"👑":"👤")+'</div><div class="name">'+name+'</div><div class="tag">'+(isBanker?"بانکدار":isMe?"شما":isActive?"نوبت بازی":"بازیکن")+'</div><div class="cards">'+shownCards+'</div><div class="seat-balance">موجودی: '+cash(p.profiles?.demo_chips||0)+' ژتون</div></div>';
+      const shownCards=revealedCards || privateCards || hiddenBack;
+      return '<div class="seat s'+i+' '+(isMe?"active ":"")+(isBanker?"banker ":"")+(isActive?"turn-active":"")+'"><div class="avatar">'+(isBanker?"👑":"👤")+'</div><div class="name">'+name+'</div><div class="tag">'+(isBanker?"بانکدار":isActive?"◀ نوبت فعلی":isMe?"شما":"بازیکن")+' · صندلی '+p.seat_no+'</div><div class="cards">'+shownCards+'</div><div class="seat-balance">موجودی: '+cash(p.profiles?.demo_chips||0)+' ژتون</div></div>';
     }).join("");
     const statusText=gameError?"خطای دریافت وضعیت بازی: "+gameError.message:(game?.message||"در انتظار شروع بازی");
     $("status").textContent=statusText;
-    $("handInfo").innerHTML=gameError?"وضعیت کارت‌ها دریافت نشد.":("کارت‌های شما: "+((game?.my_hand||[]).map(x=>cardHtml(x)).join(" ")||"—")+" · امتیاز: "+(game?.my_score||0));
+    $("handInfo").innerHTML=gameError?"وضعیت کارت‌ها دریافت نشد.":("کارت‌های شما: "+((game?.my_hand||[]).map(x=>cardHtml(x)).join(" ")||"—")+" · امتیاز: "+(game?.my_score||0)+" · ترتیب نوبت: از صندلی سمت راست بانکدار");
     if(!gameError&&newCardDealtThisRender&&window.play21Fx)window.play21Fx("card");
     $("cardChoices").innerHTML="";
     $("bankAmount").textContent=cash(game?.bank_amount??stakes[tableIndex]*3);
@@ -336,6 +332,15 @@
       .on("postgres_changes",{event:"*",schema:"public",table:"table_seats",filter:"table_id=eq."+tableId},()=>{renderLobby(i).catch(console.error);refreshOccupancy();})
       .on("postgres_changes",{event:"*",schema:"public",table:"table_public_state",filter:"table_id=eq."+tableId},()=>renderLobby(i).catch(console.error))
       .subscribe();
+    if(autoTickTimer)clearInterval(autoTickTimer);
+    autoTickTimer=setInterval(async()=>{
+      if(seatedTable!==tableId||document.hidden)return;
+      try{
+        const {data,error}=await client.rpc("game_auto_advance",{p_table_id:tableId});
+        if(error)console.warn("auto turn tick:",error.message);
+        if(data?.advanced)await renderLobby(i);
+      }catch(e){console.warn("auto turn tick failed",e);}
+    },3000);
     chatChannel=client.channel("table-chat-"+tableId)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"table_chat",filter:"table_id=eq."+tableId},payload=>{if(payload.new?.user_id!==window.current21GameUser?.id&&$("chatPanel").classList.contains("hidden")){$("chatUnreadDot").classList.remove("hidden");hasUnreadChat=true;}loadChat();}).subscribe();
     voiceChannel=client.channel("voice-table-"+tableId,{config:{broadcast:{self:false,ack:true}}}).on("broadcast",{event:"signal"},({payload})=>handleVoiceSignal(payload));
@@ -375,12 +380,15 @@
     try{
       const tableAtStart=seatedTable;
       const {data,error}=await client.rpc("game_action",{p_table_id:tableAtStart,p_action:action});
-      if(error){alert("خطای بازی: "+error.message);return;}
-      if(window.refresh21GameProfile)await window.refresh21GameProfile();
-      if(seatedTable===tableAtStart){await renderLobby(tableAtStart-1);if(data?.message)$("status").textContent=data.message;}
+      if(error)throw error;
+      if(seatedTable===tableAtStart){
+        if(data?.message)$("status").textContent=data.message;
+        renderLobby(tableAtStart-1).catch(console.error);
+      }
+      if(window.refresh21GameProfile)window.refresh21GameProfile().catch(console.warn);
       if(action==="pause"){schedulePauseKick(tableAtStart);$("modal").classList.add("hidden");}
     }catch(e){alert("خطای بازی: "+(e.message||e));}
-    finally{actionInFlight=false;actionButtons.forEach(id=>{const el=$(id);if(el)el.disabled=false;});if(seatedTable)renderLobby(seatedTable-1).catch(console.error);}
+    finally{actionInFlight=false;actionButtons.forEach(id=>{const el=$(id);if(el)el.disabled=false;});}
   }
   async function leaveOnlineTable(){
     const client=window.supabase21Game,user=window.current21GameUser;if(!client||!user||!seatedTable)return;
@@ -390,6 +398,7 @@
     const {error}=await client.rpc("game_leave_table",{p_table_id:tableId});
     if(error){alert("ترک میز انجام نشد: "+error.message);return;}
     for(const ch of [channel,chatChannel,voiceChannel])if(ch)await client.removeChannel(ch);
+    if(autoTickTimer)clearInterval(autoTickTimer);autoTickTimer=null;
     channel=null;chatChannel=null;voiceChannel=null;seatedTable=null;
     $("leaveOnlineTable").classList.add("hidden");$("pauseOnlineTable").classList.add("hidden");$("modal").classList.add("hidden");
   }
