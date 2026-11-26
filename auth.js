@@ -376,15 +376,17 @@
           pc.restartIce();
         }catch(error){console.warn("ICE restart could not refresh TURN credentials:",error);}
       };
-      pc.onnegotiationneeded=async()=>{
-        try{
-          if(pc.signalingState!=="stable")return;
-          const offer=await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          await sendVoiceSignal(id,{kind:"offer",sdp:pc.localDescription});
-        }catch(error){console.warn("Voice renegotiation failed:",error);}
-      };
-      if(offerer){const offer=await pc.createOffer();await pc.setLocalDescription(offer);await sendVoiceSignal(id,{kind:"offer",sdp:pc.localDescription});}
+      if(offerer){
+        const offer=await pc.createOffer();await pc.setLocalDescription(offer);await sendVoiceSignal(id,{kind:"offer",sdp:pc.localDescription});
+        pc.onnegotiationneeded=async()=>{
+          try{
+            if(pc.signalingState!=="stable")return;
+            const nextOffer=await pc.createOffer();
+            await pc.setLocalDescription(nextOffer);
+            await sendVoiceSignal(id,{kind:"offer",sdp:pc.localDescription});
+          }catch(error){console.warn("Voice renegotiation failed:",error);}
+        };
+      }
       return pc;
     })();
     peerSetupPromises.set(id,setup);
@@ -403,6 +405,14 @@
         await flushIceCandidates(from,pc);
         const answer=await pc.createAnswer();await pc.setLocalDescription(answer);
         await sendVoiceSignal(from,{kind:"answer",sdp:pc.localDescription});
+        pc.onnegotiationneeded=async()=>{
+          try{
+            if(pc.signalingState!=="stable")return;
+            const nextOffer=await pc.createOffer();
+            await pc.setLocalDescription(nextOffer);
+            await sendVoiceSignal(from,{kind:"offer",sdp:pc.localDescription});
+          }catch(error){console.warn("Voice renegotiation failed:",error);}
+        };
       }else if(payload.kind==="answer"&&peers.has(from)){
         const pc=peers.get(from);
         await pc.setRemoteDescription(payload.sdp);
