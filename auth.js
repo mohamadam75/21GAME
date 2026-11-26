@@ -188,7 +188,11 @@
       const initialCards=showAskechi?renderCardList(askechi.filter(x=>x.user_id===p.user_id),true,p.user_id,true):"";
       const privateCards=isMe&&!gameError?renderCardList(game?.my_hand||[],true,p.user_id):"";
       const revealedCards=game?.status==="settled"?renderCardList(game?.revealed_hands?.[p.user_id]||[],true,p.user_id):"";
-      const shownCards=initialCards || revealedCards || privateCards || (game?.status==="playing"&&!isMe?'<span class="card-back playing-card"></span>':"");
+      const hiddenBackKey=[tableId,visualRound,p.user_id,"hidden-back"].join(":");
+      const animateHiddenBack=!seenCardKeys.has(hiddenBackKey);
+      if(game?.status==="playing"&&!isMe&&animateHiddenBack){seenCardKeys.add(hiddenBackKey);newCardDealtThisRender=true;}
+      const hiddenBack=game?.status==="playing"&&!isMe?'<span class="card-back playing-card '+(animateHiddenBack?'deal-in':'')+'" style="--deal-delay:'+(i*55)+'ms"></span>':"";
+      const shownCards=initialCards || revealedCards || privateCards || hiddenBack;
       return '<div class="seat s'+i+' '+(isMe?"active ":"")+(isBanker?"banker ":"")+(isActive?"turn-active":"")+'"><div class="avatar">'+(isBanker?"👑":"👤")+'</div><div class="name">'+name+'</div><div class="tag">'+(isBanker?"بانکدار":isMe?"شما":isActive?"نوبت بازی":"بازیکن")+'</div><div class="cards">'+shownCards+'</div><div class="seat-balance">موجودی: '+cash(p.profiles?.demo_chips||0)+' ژتون</div></div>';
     }).join("");
     const statusText=gameError?"خطای دریافت وضعیت بازی: "+gameError.message:(game?.message||"در انتظار شروع بازی");
@@ -199,7 +203,6 @@
     $("bankAmount").textContent=cash(game?.bank_amount??stakes[tableIndex]*3);
     const bankAmount=Number(game?.bank_amount??stakes[tableIndex]*3);
     const bankChanged=lastVisualBankAmount===null||bankAmount!==lastVisualBankAmount;
-    const bankIncreased=lastVisualBankAmount!==null&&bankAmount>lastVisualBankAmount;
     const chipCount=Math.max(0,Math.min(12,Math.round(bankAmount/stakes[tableIndex])));
     $("bankChips").innerHTML=chipCount?Array.from({length:chipCount},(_,i)=>'<span class="chip-token chip-'+(i%4)+(bankChanged?' chip-arrive':'')+'" style="--chip-index:'+i+'"></span>').join(""):'<span class="empty-bank">بانک بازی</span>';
     if(bankChanged&&lastVisualBankAmount!==null&&window.play21Fx)window.play21Fx("chips");
