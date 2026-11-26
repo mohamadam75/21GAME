@@ -1,6 +1,11 @@
-import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { handleRequest } from "./index.ts";
 
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(message);
+}
+function equal(actual: unknown, expected: unknown, message: string) {
+  assert(JSON.stringify(actual) === JSON.stringify(expected), message + ": " + JSON.stringify(actual));
+}
 function jwt(sub = "user-123") {
   const payload = btoa(JSON.stringify({ sub, exp: 4_000_000_000 }))
     .replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
@@ -32,17 +37,17 @@ Deno.test("authenticated endpoint forwards Bearer token and client IP, returns I
     },
   });
   const result = await response.json();
-  assertEquals(response.status, 200);
-  assertEquals(capturedUrl, "https://turnix.io/api/v1/credentials/ice");
+  assert(response.status === 200, "expected HTTP 200");
+  assert(capturedUrl === "https://turnix.io/api/v1/credentials/ice", "wrong Turnix URL");
   const headers = new Headers(capturedInit?.headers);
-  assertEquals(headers.get("Authorization"), "Bearer " + secret);
-  assertEquals(headers.get("X-TURN-CLIENT-IP"), "203.0.113.8");
-  assertEquals(JSON.parse(String(capturedInit?.body)), {
+  assert(headers.get("Authorization") === "Bearer " + secret, "Bearer token not forwarded");
+  assert(headers.get("X-TURN-CLIENT-IP") === "203.0.113.8", "client IP not forwarded");
+  equal(JSON.parse(String(capturedInit?.body)), {
     ttl: "3600", room: "table7", initiator_client: "clientabc",
-  });
-  assertEquals(result.iceServers, iceServers);
-  assertEquals(result.expiresAt, "2026-12-01T12:00:00.000Z");
-  assertEquals(JSON.stringify(result).includes(secret), false);
+  }, "wrong Turnix request body");
+  equal(result.iceServers, iceServers, "ICE servers not returned");
+  assert(result.expiresAt === "2026-12-01T12:00:00.000Z", "expiry not returned");
+  assert(!JSON.stringify(result).includes(secret), "API token leaked in response");
 });
 
 Deno.test("missing authentication is rejected before calling Turnix", async () => {
@@ -50,7 +55,7 @@ Deno.test("missing authentication is rejected before calling Turnix", async () =
     token: "unused",
     fetchImpl: async () => { throw new Error("must not call provider"); },
   });
-  assertEquals(response.status, 401);
+  assert(response.status === 401, "unauthenticated request should be rejected");
 });
 
 Deno.test("Turnix 429 maps to 503 without returning provider details", async () => {
@@ -60,8 +65,8 @@ Deno.test("Turnix 429 maps to 503 without returning provider details", async () 
     token: "secret",
     fetchImpl: async () => new Response(JSON.stringify({ error: "quota", limit: 10, used: 10 }), { status: 429 }),
   });
-  assertEquals(response.status, 503);
+  assert(response.status === 503, "429 should map to 503");
   const body = await response.text();
-  assertStringIncludes(body, "به حد مجاز استفاده TURN رسیده‌ایم");
-  assertEquals(body.includes("secret"), false);
+  assert(body.includes("به حد مجاز استفاده TURN رسیده‌ایم"), "missing quota message");
+  assert(!body.includes("secret"), "token leaked in error response");
 });
