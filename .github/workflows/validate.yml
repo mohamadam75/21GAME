@@ -26,10 +26,14 @@ jobs:
           deno-version: v2.x
       - name: Check Supabase Edge Function
         run: deno check supabase/functions/voice-ice-servers/index.ts
+      - name: Check Turnix Edge Function tests
+        run: deno test --allow-env supabase/functions/voice-ice-servers/index_test.ts
       - name: Verify voice release wiring
         run: |
           grep -q 'config:{private:true' auth.js
-          grep -q 'functions.invoke("voice-ice-servers")' auth.js
+          grep -q 'functions.invoke("voice-ice-servers"' auth.js
+          grep -q 'expiresAt' auth.js
+          grep -q 'restartIce()' auth.js
           grep -q '21game table members receive voice broadcasts' supabase/voice_security.sql
           grep -q '21game table members send voice broadcasts' supabase/voice_security.sql
           grep -q 'paused_at' supabase/game_engine.sql
