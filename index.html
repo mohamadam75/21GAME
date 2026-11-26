@@ -85,6 +85,16 @@
     <h2 id="modalTitle"></h2>
     <div id="tableInfo" class="table-info"></div>
 
+    <div class="table-utility-bar" aria-label="ابزارهای میز">
+      <button id="pauseOnlineTable" class="utility-btn secondary hidden" type="button" title="خروج موقت">⏸ خروج موقت</button>
+      <button id="leaveOnlineTable" class="utility-btn leave-btn secondary hidden" type="button" title="ترک میز">🚪 ترک میز</button>
+      <div class="social-tools">
+        <button id="soundToggle" class="social-btn" title="صدای کشیدن کارت">🔊 صدا</button>
+        <button id="voiceBtn" class="social-btn">🎙 وویس</button>
+        <button id="chatBtn" class="social-btn">💬 پیام‌ها <span id="chatUnreadDot" class="unread-dot hidden"></span></button>
+      </div>
+    </div>
+
     <div class="poker-table">
       <div class="table-inner">
         <div class="bank-center">
@@ -95,15 +105,6 @@
         </div>
       </div>
       <div id="seats" class="seats"></div>
-    </div>
-
-    <button id="pauseOnlineTable" class="secondary hidden" type="button">خروج موقت</button>
-    <button id="leaveOnlineTable" class="secondary hidden" type="button">ترک میز</button>
-
-    <div class="social-tools">
-      <button id="soundToggle" class="social-btn" title="صدای کشیدن کارت">🔊 صدای کارت روشن</button>
-      <button id="voiceBtn" class="social-btn">🎙 وویس</button>
-      <button id="chatBtn" class="social-btn">💬 پیام‌ها <span id="chatUnreadDot" class="unread-dot hidden"></span></button>
     </div>
 
     <div id="chatPanel" class="chat-panel hidden">
