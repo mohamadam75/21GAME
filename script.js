@@ -39,24 +39,42 @@ const $ = id => document.getElementById(id);
 const money = n => Number(n || 0).toLocaleString("fa-IR");
 window.update21GameTables = function(rows) { tables = rows.slice().sort((a,b)=>a.id-b.id).map(t=>Number(t.stake)); renderTables(); };
 
-// ===== Sound =====
-function playCardSound() {
-  if (!soundEnabled) return;
+// ===== Sound: lightweight Web Audio effects shared by solo and online play =====
+let gameAudioContext = null;
+function unlock21Audio() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = "triangle";
-    osc.frequency.setValueAtTime(800, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.08);
-    gain.gain.setValueAtTime(0.15, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.1);
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+    if (!gameAudioContext) gameAudioContext = new AudioContextClass();
+    if (gameAudioContext.state === "suspended") gameAudioContext.resume().catch(() => {});
+    return gameAudioContext;
+  } catch (e) { return null; }
+}
+function play21Fx(type = "card") {
+  if (!soundEnabled) return;
+  const ctx = unlock21Audio();
+  if (!ctx) return;
+  try {
+    const now = ctx.currentTime;
+    const notes = type === "chips" ? [520, 760] : type === "win" ? [660, 880, 1040] : [720];
+    notes.forEach((frequency, index) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type === "card" ? "triangle" : "sine";
+      osc.frequency.setValueAtTime(frequency, now + index * 0.055);
+      if (type === "card") osc.frequency.exponentialRampToValueAtTime(260, now + 0.105);
+      gain.gain.setValueAtTime(type === "card" ? 0.075 : 0.045, now + index * 0.055);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + index * 0.055 + (type === "card" ? 0.11 : 0.16));
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + index * 0.055);
+      osc.stop(now + index * 0.055 + (type === "card" ? 0.12 : 0.18));
+    });
   } catch (e) {}
 }
+window.play21Fx = play21Fx;
+window.unlock21Audio = unlock21Audio;
+function playCardSound() { play21Fx("card"); }
 
 // ===== Cards (Clear CSS-based) =====
 const suits = ["♠", "♥", "♦", "♣"];
@@ -690,8 +708,9 @@ $("rulesClose").onclick = () => $("rulesModal").classList.add("hidden");
 $("soundToggle").onclick = () => {
   soundEnabled = !soundEnabled;
   const btn = $("soundToggle");
-  btn.textContent = soundEnabled ? "🔊" : "🔇";
+  btn.textContent = soundEnabled ? "🔊 صدای بازی روشن" : "🔇 صدای بازی خاموش";
   btn.classList.toggle("muted", !soundEnabled);
+  if (soundEnabled) unlock21Audio();
 };
 
 // Init
