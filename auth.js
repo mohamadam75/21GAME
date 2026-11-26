@@ -96,15 +96,34 @@
         const {error}=await window.supabase21Game.rpc("game_kick_paused_player",{p_table_id:tableId});
         if(error)throw error;
         clearPauseKickTimer();
+        clearVoiceConnections(true);
         for(const ch of [channel,chatChannel,voiceChannel])if(ch)await window.supabase21Game.removeChannel(ch);
-        channel=null;chatChannel=null;voiceChannel=null;seatedTable=null;
+        channel=null;chatChannel=null;voiceChannel=null;voiceChannelReady=false;seatedTable=null;
         $("leaveOnlineTable").classList.add("hidden");$("pauseOnlineTable").classList.add("hidden");$("modal").classList.add("hidden");
         await refreshOccupancy();
         alert("به دلیل ۵ دقیقه عدم حضور، از میز خارج شدید.");
       }catch(e){console.error("Auto kick after pause failed",e);}
     },5*60*1000);
   }
-  const peers=new Map(), audioEls=new Map();
+  const peers=new Map(), audioEls=new Map(), pendingIceCandidates=new Map();
+  let voiceChannelReady=false;
+  function clearVoiceConnections(notify=false){
+    if(notify)for(const id of peers.keys())sendVoiceSignal(id,{kind:"bye"});
+    [...peers.keys()].forEach(closePeer);
+    pendingIceCandidates.clear();
+    if(localStream)localStream.getTracks().forEach(track=>track.stop());
+    localStream=null;voiceEnabled=false;
+    const button=$("voiceBtn"),note=$("voiceNote");
+    if(button){button.classList.remove("active");button.textContent="🎙 وویس";}
+    if(note)note.textContent="وویس خاموش است.";
+  }
+  async function flushIceCandidates(id,pc){
+    const queued=pendingIceCandidates.get(id)||[];
+    pendingIceCandidates.delete(id);
+    for(const candidate of queued){
+      try{await pc.addIceCandidate(candidate);}catch(e){console.warn("ICE candidate:",e);}
+    }
+  }
   let stakes=[20000,30000,40000,50000,50000,60000,70000,80000,90000,100000];
   let tableStatuses=Array(10).fill("waiting"),tableCapacities=Array(10).fill(6);
   function cash(n){return Number(n||0).toLocaleString("fa-IR");}
@@ -269,7 +288,12 @@
       if(!audio){audio=document.createElement("audio");audio.autoplay=true;audio.playsInline=true;audio.style.display="none";$("chatPanel").appendChild(audio);audioEls.set(id,audio);}
       audio.srcObject=e.streams[0];audio.muted=false;audio.volume=1;audio.play().catch(()=>{$("voiceNote").textContent="اتصال برقرار شده اما پخش صدا مسدود است؛ روی صفحه کلیک کنید و صدای مرورگر را بررسی کنید.";});
     };
-    pc.onconnectionstatechange=()=>{if(["failed","closed"].includes(pc.connectionState))closePeer(id);};
+    pc.onconnectionstatechange=()=>{
+      if(["failed","closed"].includes(pc.connectionState)){
+        closePeer(id);
+        if(voiceEnabled)$("voiceNote").textContent="ارتباط صوتی با یکی از بازیکنان قطع شد؛ در صورت نیاز وویس را خاموش و روشن کنید.";
+      }
+    };
     if(offerer){const offer=await pc.createOffer();await pc.setLocalDescription(offer);await sendVoiceSignal(id,{kind:"offer",sdp:pc.localDescription});}
     return pc;
   }
@@ -280,40 +304,46 @@
       if(payload.kind==="hello"){
         if(voiceEnabled&&me<from)await makePeer(from,true);
       }else if(payload.kind==="offer"&&voiceEnabled){
-        const pc=await makePeer(from,false);await pc.setRemoteDescription(payload.sdp);
+        const pc=await makePeer(from,false);
+        await pc.setRemoteDescription(payload.sdp);
+        await flushIceCandidates(from,pc);
         const answer=await pc.createAnswer();await pc.setLocalDescription(answer);
         await sendVoiceSignal(from,{kind:"answer",sdp:pc.localDescription});
       }else if(payload.kind==="answer"&&peers.has(from)){
-        await peers.get(from).setRemoteDescription(payload.sdp);
+        const pc=peers.get(from);
+        await pc.setRemoteDescription(payload.sdp);
+        await flushIceCandidates(from,pc);
       }else if(payload.kind==="candidate"&&peers.has(from)&&payload.candidate){
-        await peers.get(from).addIceCandidate(payload.candidate);
-      }else if(payload.kind==="bye"){closePeer(from);}
+        const pc=peers.get(from);
+        if(pc.remoteDescription)await pc.addIceCandidate(payload.candidate);
+        else pendingIceCandidates.set(from,[...(pendingIceCandidates.get(from)||[]),payload.candidate]);
+      }else if(payload.kind==="bye"){closePeer(from);pendingIceCandidates.delete(from);}
     }catch(e){console.warn("voice signaling:",e);}
   }
   async function toggleVoice(){
     if(voiceEnabled){
       voiceEnabled=false;
-      for(const id of peers.keys())sendVoiceSignal(id,{kind:"bye"});
-      [...peers.keys()].forEach(closePeer);
-      if(localStream)localStream.getTracks().forEach(t=>t.stop());
-      localStream=null;$("voiceBtn").classList.remove("active");$("voiceBtn").textContent="🎙 وویس";
-      $("voiceNote").textContent="وویس خاموش است.";return;
+      clearVoiceConnections(true);
+      return;
     }
     if(!seatedTable){alert("ابتدا وارد یک میز شوید.");return;}
     if(!navigator.mediaDevices?.getUserMedia||!window.RTCPeerConnection){alert("مرورگر شما تماس صوتی را پشتیبانی نمی‌کند.");return;}
+    if(!voiceChannelReady){alert("اتصال صوتی میز هنوز آماده نیست؛ چند لحظه صبر کنید و دوباره بزنید.");return;}
     try{
-      localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});voiceEnabled=true;
+      localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});voiceEnabled=true;
       $("voiceBtn").classList.add("active");$("voiceBtn").textContent="🎙 قطع وویس";
       $("voiceNote").textContent="میکروفون فعال شد؛ در انتظار اتصال بازیکنان دیگر...";
-      const {data}=await window.supabase21Game.from("table_seats").select("user_id").eq("table_id",seatedTable);
+      const {data,error}=await window.supabase21Game.from("table_seats").select("user_id").eq("table_id",seatedTable);
+      if(error)throw error;
       for(const row of data||[])if(row.user_id!==window.current21GameUser.id){if(window.current21GameUser.id<row.user_id)await makePeer(row.user_id,true);else await sendVoiceSignal(row.user_id,{kind:"hello"});}
-    }catch(e){voiceEnabled=false;if(localStream)localStream.getTracks().forEach(t=>t.stop());localStream=null;alert("فعال‌سازی میکروفون انجام نشد: "+e.message);}
+    }catch(e){clearVoiceConnections(false);alert("فعال‌سازی میکروفون انجام نشد: "+e.message);}
   }
   async function setupTableChannels(tableId,i){
     const client=window.supabase21Game;
     if(channel)await client.removeChannel(channel);
     if(chatChannel)await client.removeChannel(chatChannel);
     if(voiceChannel)await client.removeChannel(voiceChannel);
+    voiceChannelReady=false;
     channel=client.channel("table-seats-"+tableId)
       .on("postgres_changes",{event:"*",schema:"public",table:"table_seats",filter:"table_id=eq."+tableId},()=>{renderLobby(i).catch(console.error);refreshOccupancy();})
       .on("postgres_changes",{event:"*",schema:"public",table:"table_public_state",filter:"table_id=eq."+tableId},()=>renderLobby(i).catch(console.error))
@@ -330,7 +360,11 @@
     chatChannel=client.channel("table-chat-"+tableId)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"table_chat",filter:"table_id=eq."+tableId},payload=>{if(payload.new?.user_id!==window.current21GameUser?.id&&$("chatPanel").classList.contains("hidden")){$("chatUnreadDot").classList.remove("hidden");hasUnreadChat=true;}loadChat();}).subscribe();
     voiceChannel=client.channel("voice-table-"+tableId,{config:{broadcast:{self:false,ack:true}}}).on("broadcast",{event:"signal"},({payload})=>handleVoiceSignal(payload));
-    await new Promise(resolve=>{let done=false;voiceChannel.subscribe(status=>{if(status==="SUBSCRIBED"&&!done){done=true;resolve();}if((status==="CHANNEL_ERROR"||status==="TIMED_OUT")&&!done){done=true;resolve();$("voiceNote").textContent="خطای اتصال وویس؛ تنظیمات Realtime را بررسی کنید.";}});});
+    await new Promise(resolve=>{let done=false;voiceChannel.subscribe(status=>{
+      if(status==="SUBSCRIBED"){voiceChannelReady=true;if(!done){done=true;resolve();}}
+      if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"){voiceChannelReady=false;if(!done){done=true;resolve();}$("voiceNote").textContent="خطای اتصال وویس؛ ارتباط Realtime سوپابیس برقرار نشد.";}
+      if(status==="CLOSED")voiceChannelReady=false;
+    });});
     await loadChat();
   }
   async function joinOnlineTable(i){
@@ -380,12 +414,12 @@
     const client=window.supabase21Game,user=window.current21GameUser;if(!client||!user||!seatedTable)return;
     const tableId=seatedTable;
     clearPauseKickTimer();
-    if(voiceEnabled)await toggleVoice();
+    if(voiceEnabled)clearVoiceConnections(true);
     const {error}=await client.rpc("game_leave_table",{p_table_id:tableId});
     if(error){alert("ترک میز انجام نشد: "+error.message);return;}
     for(const ch of [channel,chatChannel,voiceChannel])if(ch)await client.removeChannel(ch);
     if(autoTickTimer)clearInterval(autoTickTimer);autoTickTimer=null;
-    channel=null;chatChannel=null;voiceChannel=null;seatedTable=null;
+    channel=null;chatChannel=null;voiceChannel=null;voiceChannelReady=false;seatedTable=null;
     $("leaveOnlineTable").classList.add("hidden");$("pauseOnlineTable").classList.add("hidden");$("modal").classList.add("hidden");
   }
   window.addEventListener("DOMContentLoaded",()=>{
