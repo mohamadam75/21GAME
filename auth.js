@@ -106,7 +106,36 @@
     },5*60*1000);
   }
   const peers=new Map(), audioEls=new Map(), pendingIceCandidates=new Map();
-  let voiceChannelReady=false;
+  let voiceChannelReady=false, cachedIceServers=null, iceServersExpiresAt=0;
+  async function getVoiceIceServers(){
+    if(cachedIceServers&&Date.now()<iceServersExpiresAt)return cachedIceServers;
+    const fallback=[{urls:"stun:stun.l.google.com:19302"}];
+    try{
+      const {data,error}=await window.supabase21Game.functions.invoke("voice-ice-servers");
+      if(error)throw error;
+      const servers=data?.iceServers;
+      if(!Array.isArray(servers)||!servers.some(x=>String(x.urls||"").includes("turn:")))throw new Error("TURN credentials are not configured");
+      cachedIceServers=servers;
+      iceServersExpiresAt=Date.now()+45*60*1000;
+      return cachedIceServers;
+    }catch(e){
+      console.warn("TURN credentials unavailable; using STUN fallback:",e);
+      $("voiceNote").textContent="سرور کمکی TURN تنظیم نشده؛ تماس ممکن است روی بعضی اینترنت‌ها وصل نشود.";
+      return fallback;
+    }
+  }
+  async function syncVoicePeers(){
+    if(!voiceEnabled||!seatedTable||!voiceChannelReady)return;
+    const {data,error}=await window.supabase21Game.from("table_seats").select("user_id").eq("table_id",seatedTable);
+    if(error)throw error;
+    const ids=new Set((data||[]).map(row=>row.user_id).filter(id=>id&&id!==window.current21GameUser?.id));
+    for(const id of peers.keys())if(!ids.has(id)){closePeer(id);pendingIceCandidates.delete(id);}
+    for(const id of ids){
+      if(peers.has(id))continue;
+      if(window.current21GameUser.id<id)await makePeer(id,true);
+      else await sendVoiceSignal(id,{kind:"hello"});
+    }
+  }
   function clearVoiceConnections(notify=false){
     if(notify)for(const id of peers.keys())sendVoiceSignal(id,{kind:"bye"});
     [...peers.keys()].forEach(closePeer);
@@ -279,7 +308,8 @@
   }
   async function makePeer(id,offerer){
     if(peers.has(id))return peers.get(id);
-    const pc=new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});
+    const iceServers=await getVoiceIceServers();
+    const pc=new RTCPeerConnection({iceServers,iceCandidatePoolSize:4});
     peers.set(id,pc);
     if(localStream)localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
     pc.onicecandidate=e=>{if(e.candidate)sendVoiceSignal(id,{kind:"candidate",candidate:e.candidate});};
@@ -289,9 +319,13 @@
       audio.srcObject=e.streams[0];audio.muted=false;audio.volume=1;audio.play().catch(()=>{$("voiceNote").textContent="اتصال برقرار شده اما پخش صدا مسدود است؛ روی صفحه کلیک کنید و صدای مرورگر را بررسی کنید.";});
     };
     pc.onconnectionstatechange=()=>{
-      if(["failed","closed"].includes(pc.connectionState)){
+      if(pc.connectionState==="connected"){
+        $("voiceNote").textContent="🎙 اتصال صوتی برقرار است.";
+      }else if(pc.connectionState==="connecting"){
+        $("voiceNote").textContent="در حال برقراری تماس صوتی...";
+      }else if(["failed","closed"].includes(pc.connectionState)){
         closePeer(id);
-        if(voiceEnabled)$("voiceNote").textContent="ارتباط صوتی با یکی از بازیکنان قطع شد؛ در صورت نیاز وویس را خاموش و روشن کنید.";
+        if(voiceEnabled)$("voiceNote").textContent="ارتباط صوتی با یکی از بازیکنان قطع شد؛ وویس را یک‌بار خاموش و روشن کنید.";
       }
     };
     if(offerer){const offer=await pc.createOffer();await pc.setLocalDescription(offer);await sendVoiceSignal(id,{kind:"offer",sdp:pc.localDescription});}
@@ -333,9 +367,8 @@
       localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});voiceEnabled=true;
       $("voiceBtn").classList.add("active");$("voiceBtn").textContent="🎙 قطع وویس";
       $("voiceNote").textContent="میکروفون فعال شد؛ در انتظار اتصال بازیکنان دیگر...";
-      const {data,error}=await window.supabase21Game.from("table_seats").select("user_id").eq("table_id",seatedTable);
-      if(error)throw error;
-      for(const row of data||[])if(row.user_id!==window.current21GameUser.id){if(window.current21GameUser.id<row.user_id)await makePeer(row.user_id,true);else await sendVoiceSignal(row.user_id,{kind:"hello"});}
+      await syncVoicePeers();
+      if(!peers.size)$("voiceNote").textContent="میکروفون روشن است؛ منتظر فعال شدن وویس بازیکنان دیگر هستیم.";
     }catch(e){clearVoiceConnections(false);alert("فعال‌سازی میکروفون انجام نشد: "+e.message);}
   }
   async function setupTableChannels(tableId,i){
@@ -345,7 +378,7 @@
     if(voiceChannel)await client.removeChannel(voiceChannel);
     voiceChannelReady=false;
     channel=client.channel("table-seats-"+tableId)
-      .on("postgres_changes",{event:"*",schema:"public",table:"table_seats",filter:"table_id=eq."+tableId},()=>{renderLobby(i).catch(console.error);refreshOccupancy();})
+      .on("postgres_changes",{event:"*",schema:"public",table:"table_seats",filter:"table_id=eq."+tableId},()=>{renderLobby(i).catch(console.error);refreshOccupancy();if(voiceEnabled)syncVoicePeers().catch(e=>console.warn("voice peer sync:",e));})
       .on("postgres_changes",{event:"*",schema:"public",table:"table_public_state",filter:"table_id=eq."+tableId},()=>renderLobby(i).catch(console.error))
       .subscribe();
     if(autoTickTimer)clearInterval(autoTickTimer);
@@ -359,7 +392,7 @@
     },3000);
     chatChannel=client.channel("table-chat-"+tableId)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"table_chat",filter:"table_id=eq."+tableId},payload=>{if(payload.new?.user_id!==window.current21GameUser?.id&&$("chatPanel").classList.contains("hidden")){$("chatUnreadDot").classList.remove("hidden");hasUnreadChat=true;}loadChat();}).subscribe();
-    voiceChannel=client.channel("voice-table-"+tableId,{config:{broadcast:{self:false,ack:true}}}).on("broadcast",{event:"signal"},({payload})=>handleVoiceSignal(payload));
+    voiceChannel=client.channel("voice-table-"+tableId,{config:{private:true,broadcast:{self:false,ack:true}}}).on("broadcast",{event:"signal"},({payload})=>handleVoiceSignal(payload));
     await new Promise(resolve=>{let done=false;voiceChannel.subscribe(status=>{
       if(status==="SUBSCRIBED"){voiceChannelReady=true;if(!done){done=true;resolve();}}
       if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"){voiceChannelReady=false;if(!done){done=true;resolve();}$("voiceNote").textContent="خطای اتصال وویس؛ ارتباط Realtime سوپابیس برقرار نشد.";}
@@ -437,6 +470,7 @@
     $("sendChat").onclick=sendChat;
     $("chatInput").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();sendChat();}});
     $("voiceBtn").onclick=toggleVoice;
+    document.addEventListener("pointerdown",()=>{for(const audio of audioEls.values())if(audio.srcObject)audio.play().catch(()=>{});},{passive:true});
     window.addEventListener("21game:authenticated",refreshOccupancy);
     const client=window.supabase21Game;
     if(client){refreshOccupancy();client.channel("lobby-occupancy").on("postgres_changes",{event:"*",schema:"public",table:"table_seats"},refreshOccupancy).subscribe();}
