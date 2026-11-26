@@ -541,3 +541,58 @@ end;
 $$;
 revoke all on function public.game_auto_advance(integer) from public;
 grant execute on function public.game_auto_advance(integer) to authenticated;
+
+
+-- Presence heartbeat: seats expire after 2 minutes without a heartbeat.
+alter table public.table_seats add column if not exists last_seen_at timestamptz;
+update public.table_seats set last_seen_at=coalesce(last_seen_at,joined_at,now()) where last_seen_at is null;
+alter table public.table_seats alter column last_seen_at set default now();
+alter table public.table_seats alter column last_seen_at set not null;
+create index if not exists table_seats_last_seen_idx on public.table_seats(last_seen_at);
+
+create or replace function public.game_presence_heartbeat(p_table_id integer)
+returns jsonb language plpgsql security definer set search_path=public as $$
+declare uid uuid:=auth.uid();
+begin
+  if uid is null then raise exception 'login_required'; end if;
+  update public.table_seats set last_seen_at=now()
+   where table_id=p_table_id and user_id=uid;
+  if not found then return jsonb_build_object('ok',false,'seated',false); end if;
+  return jsonb_build_object('ok',true,'seated',true,'last_seen_at',now());
+end;
+$$;
+revoke all on function public.game_presence_heartbeat(integer) from public;
+grant execute on function public.game_presence_heartbeat(integer) to authenticated;
+
+create or replace function public.game_cleanup_stale_players()
+returns jsonb language plpgsql security definer set search_path=public as $$
+declare
+  caller uuid:=auth.uid();
+  stale record;
+  old_claim text;
+  removed_count integer:=0;
+  cleanup_result jsonb;
+begin
+  if caller is null then raise exception 'login_required'; end if;
+  for stale in
+    select table_id,user_id from public.table_seats
+     where last_seen_at<=now()-interval '2 minutes'
+     order by last_seen_at asc limit 100
+     for update skip locked
+  loop
+    old_claim:=current_setting('request.jwt.claim.sub',true);
+    perform set_config('request.jwt.claim.sub',stale.user_id::text,true);
+    cleanup_result:=public.game_kick_paused_player(stale.table_id);
+    perform set_config('request.jwt.claim.sub',coalesce(old_claim,''),true);
+    if coalesce((cleanup_result->>'ok')::boolean,false) then
+      removed_count:=removed_count+1;
+    end if;
+  end loop;
+  return jsonb_build_object('ok',true,'removed',removed_count);
+exception when others then
+  perform set_config('request.jwt.claim.sub',coalesce(old_claim,''),true);
+  raise;
+end;
+$$;
+revoke all on function public.game_cleanup_stale_players() from public;
+grant execute on function public.game_cleanup_stale_players() to authenticated;
