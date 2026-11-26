@@ -517,6 +517,7 @@
     if(spectatorChannel){await window.supabase21Game.removeChannel(spectatorChannel);spectatorChannel=null;}
     spectatorTable=null;$("leaveSpectator").classList.add("hidden");$("modal").classList.add("hidden");
     $("voiceBtn").classList.remove("hidden");$("chatBtn").classList.remove("hidden");
+    ["startGameBtn","drawCardBtn","standBtn","closeBankBtn","nextPlayerBtn","nextRoundBtn"].forEach(id=>$(id).classList.remove("hidden"));
     await refreshOccupancy();
   }
   async function watchOnlineTable(i){
@@ -598,6 +599,7 @@
     $("leaveOnlineTable").addEventListener("click",leaveOnlineTable);
     $("leaveSpectator").addEventListener("click",leaveSpectator);
     $("closeModal").addEventListener("click",()=>{if(spectatorTable)leaveSpectator();});
+    $("modal").addEventListener("click",e=>{if(e.target===$("modal")&&spectatorTable)leaveSpectator();});
     $("startGameBtn").addEventListener("click",()=>sendGameAction("start"));
     $("drawCardBtn").addEventListener("click",()=>sendGameAction($("drawCardBtn").dataset.action||"draw"));
     $("standBtn").addEventListener("click",()=>sendGameAction("stand"));
