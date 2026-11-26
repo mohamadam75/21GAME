@@ -517,3 +517,7 @@ button{
   100%{opacity:0;transform:translate(var(--flight-x),var(--flight-y)) scale(.45) rotate(160deg)}
 }
 @media(prefers-reduced-motion:reduce){.chip-flight-token{animation:none;opacity:0}}
+
+/* Temporarily paused after two consecutive auto-played hands. */
+.seat.paused-player{opacity:.62;filter:saturate(.55)}
+.seat.paused-player .tag{color:#f0bd73}
