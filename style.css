@@ -568,3 +568,9 @@ button{
 .user-announcement small{color:#aebed2}
 #adminAnnouncementText{width:100%;box-sizing:border-box;min-height:110px;padding:12px;border:1px solid #40516b;border-radius:10px;background:#0c1421;color:#fff;font:inherit}
 @media(min-width:700px){.admin-user-card{padding:20px}.user-financials{grid-template-columns:1fr 1fr}}
+
+.table-actions{display:flex;gap:8px;margin-top:12px}
+.table-actions button{flex:1;min-width:0}
+.table-actions .watch{background:#263a55;color:#e8f1fb;border:1px solid #536d8c;border-radius:10px;padding:10px 12px;font-weight:700;cursor:pointer}
+.table-actions .watch:hover{background:#355273}
+#leaveSpectator{background:#354b68}
