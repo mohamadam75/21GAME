@@ -128,8 +128,8 @@ function renderTables() {
     const ok = wallet >= base * 4;
     return `<article class="table-card">
       <h3>میز ${i + 1}</h3>
-      <div class="amount">${money(base)} تومان</div>
-      <div class="meta">حداقل موجودی: ${money(base * 4)} تومان<br>ظرفیت: ۲ تا ۶ نفر<br><strong class="online-count" id="onlineCount${i}">آنلاین: ${Number(tableOccupancy[i]||0).toLocaleString("fa-IR")} نفر</strong></div>
+      <div class="amount">${money(base)} ژتون آزمایشی</div>
+      <div class="meta">حداقل موجودی: ${money(base * 4)} ژتون آزمایشی<br>ظرفیت: ۲ تا ۶ نفر<br><strong class="online-count" id="onlineCount${i}">آنلاین: ${Number(tableOccupancy[i]||0).toLocaleString("fa-IR")} نفر</strong></div>
       <button class="join" ${ok ? "" : "disabled"} onclick="joinTable(${i})">${ok ? "ورود به میز" : "موجودی کافی نیست"}</button>
     </article>`;
   }).join("");
@@ -665,23 +665,23 @@ function requestWithdraw() {
 }
 
 // ===== Events =====
-$("standBtn").onclick = stand;
-$("closeBankBtn").onclick = () => { if (bankerTurn && !battleSettled && !roundEnded) finishBattle(); };
-$("nextRoundBtn").onclick = newBankRound;
-$("nextPlayerBtn").onclick = nextPlayer;
+$("standBtn").onclick = () => { if (!window.supabase21Game) stand(); };
+$("closeBankBtn").onclick = () => { if (!window.supabase21Game && bankerTurn && !battleSettled && !roundEnded) finishBattle(); };
+$("nextRoundBtn").onclick = () => { if (!window.supabase21Game) newBankRound(); };
+$("nextPlayerBtn").onclick = () => { if (!window.supabase21Game) nextPlayer(); };
 $("closeModal").onclick = () => $("modal").classList.add("hidden");
 $("modal").addEventListener("click", e => {
   if (e.target === $("modal")) $("modal").classList.add("hidden");
 });
 
-$("chatBtn").onclick = () => document.getElementById("chatPanel").classList.toggle("hidden");
-$("voiceBtn").onclick = () => {
+$("chatBtn").onclick = () => { if (!window.supabase21Game) document.getElementById("chatPanel").classList.toggle("hidden"); };
+$("voiceBtn").onclick = () => { if (window.supabase21Game) return;
   const b = document.getElementById("voiceBtn");
   b.classList.toggle("active");
   b.textContent = b.classList.contains("active") ? "🎙 وویس روشن" : "🎙 وویس";
   document.getElementById("voiceNote").textContent = b.classList.contains("active") ? "وویس روشن است." : "وویس خاموش است.";
 };
-$("sendChat").onclick = () => {
+$("sendChat").onclick = () => { if (window.supabase21Game) return;
   const input = document.getElementById("chatInput");
   const t = input.value.trim();
   if (!t) return;
@@ -692,15 +692,15 @@ $("sendChat").onclick = () => {
   input.value = "";
 };
 $("chatInput").addEventListener("keydown", e => {
-  if (e.key === "Enter") $("sendChat").click();
+  if (e.key === "Enter" && !window.supabase21Game) $("sendChat").click();
 });
 
 $("menuBtn").onclick = bankMenu;
 $("menuClose").onclick = bankMenu;
 $("menuOverlay").onclick = bankMenu;
 $("rulesBtn").onclick = () => { $("rulesModal").classList.remove("hidden"); bankMenu(); };
-$("balanceBtn").onclick = () => { showBalance(); bankMenu(); };
-$("withdrawBtn").onclick = () => { showWithdraw(); bankMenu(); };
+$("balanceBtn").onclick = () => { if (!window.supabase21Game) { showBalance(); bankMenu(); } };
+$("withdrawBtn").onclick = () => { if (!window.supabase21Game) { showWithdraw(); bankMenu(); } };
 $("accountClose").onclick = closeAccount;
 $("rulesClose").onclick = () => $("rulesModal").classList.add("hidden");
 
