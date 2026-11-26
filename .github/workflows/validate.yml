@@ -32,3 +32,5 @@ jobs:
           grep -q 'functions.invoke("voice-ice-servers")' auth.js
           grep -q '21game table members receive voice broadcasts' supabase/voice_security.sql
           grep -q '21game table members send voice broadcasts' supabase/voice_security.sql
+          grep -q 'paused_at' supabase/game_engine.sql
+          grep -q 'game_kick_paused_player(p_table_id)' supabase/game_engine.sql
