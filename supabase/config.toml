@@ -1,0 +1,2 @@
+[functions.voice-ice-servers]
+verify_jwt = true
