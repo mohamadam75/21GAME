@@ -33,23 +33,22 @@
 
 فایل `supabase-config.js` فقط URL پروژه و کلید عمومی publishable را دارد. کلید secret یا service_role را هرگز داخل مخزن یا فایل‌های مرورگر قرار ندهید.
 
-## فعال‌سازی تماس صوتی با TURN
+## فعال‌سازی تماس صوتی با Turnix
 
-WebRTC برای عبور از NAT و شبکه‌های محدود به TURN نیاز دارد. کد تابع Supabase در `supabase/functions/voice-ice-servers/index.ts` قرار دارد و اعتبارنامه‌های موقت Twilio Network Traversal Service را به کاربر واردشده می‌دهد.
+برای دریافت اعتبارنامه‌های موقت TURN/STUN از Turnix استفاده می‌شود. تابع احراز هویت‌شده Supabase Edge در `supabase/functions/voice-ice-servers/index.ts` قرار دارد و فقط کاربران واردشده می‌توانند آن را فراخوانی کنند.
 
-1. در Twilio یک API Key بسازید و این سه مقدار را بردارید: Account SID، API Key SID و API Key Secret.
-2. Supabase CLI را نصب و وارد حساب شوید؛ سپس از ریشه مخزن اجرا کنید:
+1. در [Turnix](https://turnix.io/) یک Project و API Token بسازید.
+2. توکن را فقط در Supabase Project Settings > Edge Functions > Secrets یا از CLI ذخیره کنید:
+   ```bash
+   supabase login
+   supabase link --project-ref wfznxmajcjpnhrxqkhgh
+   supabase secrets set TURNIX_API_TOKEN=YOUR_PRIVATE_TOKEN
+   supabase functions deploy voice-ice-servers
+   ```
+3. فایل `supabase/voice_security.sql` را در Supabase SQL Editor اجرا کنید.
+4. در HTTPS وارد بازی شوید، با دو حساب در یک میز قرار بگیرید و تماس صوتی را آزمایش کنید.
 
-```bash
-supabase login
-supabase link --project-ref wfznxmajcjpnhrxqkhgh
-supabase secrets set TWILIO_ACCOUNT_SID=AC... TWILIO_API_KEY=SK... TWILIO_API_SECRET=...
-supabase functions deploy voice-ice-servers
-```
-
-مقادیر واقعی را در پیام، فایل یا GitHub قرار ندهید؛ فقط در محیط امن Secrets وارد کنید. تابع با JWT احراز هویت‌شده اجرا می‌شود و اعتبارنامه TURN یک‌ساعته برمی‌گرداند.
-
-Twilio NTS در برخی شبکه‌ها یا کشورها ممکن است قابل دسترس نباشد و طبق مستندات فعلی آن IPv6 را پشتیبانی نمی‌کند. قبل از انتشار عمومی، تماس را بین دو دستگاه و دو اپراتور متفاوت آزمایش کنید. اگر کاربران هدف به Twilio دسترسی ندارند، باید TURN دیگری روی سرور قابل دسترس برای همان کاربران راه‌اندازی شود.
+توکن Turnix را در GitHub، فایل‌های فرانت‌اند، پیام‌ها یا مرورگر قرار ندهید. اعتبارنامه‌های ICE موقت هستند و فقط در حافظه مرورگر ذخیره می‌شوند. اگر توکن تنظیم نشده باشد تابع کد ۵۰۰ می‌دهد؛ توکن نامعتبر به ۵۰۲ و محدودیت مصرف Turnix به ۵۰۳ نگاشت می‌شود.
 
 ## آزمون انتشار
 
