@@ -493,7 +493,7 @@ begin
   perform set_config('request.jwt.claim.sub',ps.active_user_id::text,true);
   result_data:=public.game_action(p_table_id,action_name);
   perform set_config('request.jwt.claim.sub',coalesce(old_claim,''),true);
-  if ps.active_user_id<>ps.banker_user_id and action_name='stand' then
+  if ps.active_user_id<>ps.banker_user_id and (action_name='stand' or result_data->>'status'='settled') then
     select * into priv from public.table_private_state where table_id=p_table_id for update;
     auto_hands:=coalesce(priv.game_state->'auto_hands','{}'::jsonb);
     auto_count:=coalesce((auto_hands->>ps.active_user_id::text)::integer,0)+1;
