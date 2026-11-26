@@ -45,6 +45,23 @@
 
 این پروژه نسخه آزمایشی بازی است و موجودی‌های نمایش‌داده‌شده **ژتون آزمایشی** هستند؛ این برنامه در حال حاضر پرداخت واقعی یا شرط‌بندی با پول واقعی انجام نمی‌دهد.
 
+## راه‌اندازی تماس صوتی واقعی
+
+تماس صوتی از WebRTC و کانال خصوصی Supabase Realtime برای سیگنال‌دهی استفاده می‌کند. برای اتصال قابل‌اعتماد در اینترنت‌هایی که ارتباط مستقیم را مسدود می‌کنند، TURN لازم است.
+
+1. در Twilio یک حساب بسازید و از بخش API Keys یک API Key بسازید. این سه مقدار را فقط در Secrets پروژه Supabase ذخیره کنید: `TWILIO_ACCOUNT_SID`، `TWILIO_API_KEY` و `TWILIO_API_SECRET`. کلیدها را در فایل‌های سایت یا GitHub قرار ندهید.
+2. در ریشه مخزن، Supabase CLI را به پروژه متصل کنید و تابع را منتشر کنید:
+   ```bash
+   supabase login
+   supabase link --project-ref wfznxmajcjpnhrxqkhgh
+   supabase secrets set TWILIO_ACCOUNT_SID=... TWILIO_API_KEY=... TWILIO_API_SECRET=...
+   supabase functions deploy voice-ice-servers
+   ```
+3. فایل `supabase/voice_security.sql` را در SQL Editor سوپابیس اجرا کنید تا کانال صوتی فقط برای اعضای همان میز قابل دسترسی باشد.
+4. سایت را با HTTPS باز کنید و روی دکمه وویس اجازه میکروفون بدهید.
+
+تابع Edge برای هر کاربر واردشده، اعتبارنامه موقت TURN با عمر یک ساعت می‌گیرد. اگر سرویس TURN هنوز پیکربندی نشده باشد، برنامه فقط STUN را امتحان می‌کند و ممکن است روی بعضی شبکه‌ها صدا برقرار نشود. هزینه و محدودیت مصرف TURN تابع حساب Twilio است.
+
 ## لینک‌ها
 
 - [ورود و ثبت‌نام در بازی](https://mohamad...github.io/21GAME/)
