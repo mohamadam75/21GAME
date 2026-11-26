@@ -205,16 +205,17 @@
       const name=escapeHtml(p.profiles?.display_name||p.profiles?.username||"بازیکن");
       const privateCards=isMe&&!gameError?renderCardList(game?.my_hand||[],true,p.user_id):"";
       const revealedCards=game?.status==="settled"?renderCardList(game?.revealed_hands?.[p.user_id]||[],true,p.user_id):"";
+      const isPaused=(game?.paused_users||[]).includes(p.user_id);
       const hiddenBackKey=[tableId,visualRound,p.user_id,"hidden-back"].join(":");
       const animateHiddenBack=!seenCardKeys.has(hiddenBackKey);
       if(game?.status==="playing"&&!isMe&&animateHiddenBack){seenCardKeys.add(hiddenBackKey);newCardDealtThisRender=true;}
       const hiddenBack=game?.status==="playing"&&!isMe?'<span class="card-back playing-card '+(animateHiddenBack?'deal-in':'')+'" style="--deal-delay:'+(i*55)+'ms"></span>':"";
       const shownCards=revealedCards || privateCards || hiddenBack;
-      return '<div class="seat s'+i+' '+(isMe?"active ":"")+(isBanker?"banker ":"")+(isActive?"turn-active":"")+'"><div class="avatar">'+(isBanker?"👑":"👤")+'</div><div class="name">'+name+'</div><div class="tag">'+(isBanker?"بانکدار":isActive?"◀ نوبت فعلی":isMe?"شما":"بازیکن")+' · صندلی '+p.seat_no+'</div><div class="cards">'+shownCards+'</div><div class="seat-balance">موجودی: '+cash(p.profiles?.demo_chips||0)+' ژتون</div></div>';
+      return '<div class="seat s'+i+' '+(isMe?"active ":"")+(isBanker?"banker ":"")+(isActive?"turn-active ":"")+(isPaused?"paused-player ":"")+'"><div class="avatar">'+(isBanker?"👑":"👤")+'</div><div class="name">'+name+'</div><div class="tag">'+(isBanker?"بانکدار":isPaused?"⏸ موقتاً آفلاین":isActive?"◀ نوبت فعلی":isMe?"شما":"بازیکن")+' · صندلی '+p.seat_no+'</div><div class="cards">'+shownCards+'</div><div class="seat-balance">موجودی: '+cash(p.profiles?.demo_chips||0)+' ژتون</div></div>';
     }).join("");
     const statusText=gameError?"خطای دریافت وضعیت بازی: "+gameError.message:(game?.message||"در انتظار شروع بازی");
     $("status").textContent=statusText;
-    $("handInfo").innerHTML=gameError?"وضعیت کارت‌ها دریافت نشد.":("کارت‌های شما: "+((game?.my_hand||[]).map(x=>cardHtml(x)).join(" ")||"—")+" · امتیاز: "+(game?.my_score||0)+" · ترتیب نوبت: از صندلی سمت راست بانکدار");
+    $("handInfo").innerHTML=gameError?"وضعیت کارت‌ها دریافت نشد.":("آس‌کشی: "+((game?.askechi_cards||[]).map(x=>escapeHtml(x.card?.rank||"")+" "+escapeHtml(x.card?.suit||"")).join("، ")||"—")+" · کارت‌های شما: "+((game?.my_hand||[]).map(x=>cardHtml(x)).join(" ")||"—")+" · امتیاز: "+(game?.my_score||0)+" · ترتیب نوبت: خلاف عقربه ساعت از نفر بعدِ بانکدار");
     if(!gameError&&newCardDealtThisRender&&window.play21Fx)window.play21Fx("card");
     $("cardChoices").innerHTML="";
     $("bankAmount").textContent=cash(game?.bank_amount??stakes[tableIndex]*3);
@@ -364,7 +365,7 @@
         const {error:insertErr}=await client.from("table_seats").insert({table_id:i+1,user_id:user.id,seat_no:seatNo});
         if(insertErr)throw insertErr;
       }
-      if(pausedTableId===i+1){clearPauseKickTimer();const resumed=await client.rpc("game_action",{p_table_id:i+1,p_action:"resume"});if(resumed.error)throw resumed.error;}
+      clearPauseKickTimer();const resumed=await client.rpc("game_action",{p_table_id:i+1,p_action:"resume"});if(resumed.error)throw resumed.error;
       seatedTable=i+1;
       $("modalTitle").textContent="میز "+(i+1);$("modal").classList.remove("hidden");
       $("leaveOnlineTable").classList.remove("hidden");$("pauseOnlineTable").classList.remove("hidden");
