@@ -355,9 +355,9 @@
         const pc=peers.get(from);
         await pc.setRemoteDescription(payload.sdp);
         await flushIceCandidates(from,pc);
-      }else if(payload.kind==="candidate"&&peers.has(from)&&payload.candidate){
+      }else if(payload.kind==="candidate"&&payload.candidate){
         const pc=peers.get(from);
-        if(pc.remoteDescription)await pc.addIceCandidate(payload.candidate);
+        if(pc?.remoteDescription)await pc.addIceCandidate(payload.candidate);
         else pendingIceCandidates.set(from,[...(pendingIceCandidates.get(from)||[]),payload.candidate]);
       }else if(payload.kind==="bye"){closePeer(from);pendingIceCandidates.delete(from);}
     }catch(e){console.warn("voice signaling:",e);}
