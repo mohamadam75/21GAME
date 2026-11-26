@@ -64,5 +64,5 @@
 
 ## لینک‌ها
 
-- [ورود و ثبت‌نام در بازی](https://mohamad...github.io/21GAME/)
+- [ورود و ثبت‌نام در بازی](https://mohamadam75.github.io/21GAME/)
 - [مخزن پروژه در GitHub](https://github.com/mohamadam75/21GAME)
