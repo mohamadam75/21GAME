@@ -334,7 +334,7 @@
       .subscribe();
     if(autoTickTimer)clearInterval(autoTickTimer);
     autoTickTimer=setInterval(async()=>{
-      if(seatedTable!==tableId||document.hidden)return;
+      if(seatedTable!==tableId)return;
       try{
         const {data,error}=await client.rpc("game_auto_advance",{p_table_id:tableId});
         if(error)console.warn("auto turn tick:",error.message);
