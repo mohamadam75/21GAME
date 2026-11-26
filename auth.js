@@ -306,30 +306,38 @@
     const pc=peers.get(id);if(pc){pc.onicecandidate=null;pc.ontrack=null;pc.close();peers.delete(id);}
     const audio=audioEls.get(id);if(audio){audio.srcObject=null;audio.remove();audioEls.delete(id);}
   }
+  const peerSetupPromises=new Map();
   async function makePeer(id,offerer){
     if(peers.has(id))return peers.get(id);
-    const iceServers=await getVoiceIceServers();
-    const pc=new RTCPeerConnection({iceServers,iceCandidatePoolSize:4});
-    peers.set(id,pc);
-    if(localStream)localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
-    pc.onicecandidate=e=>{if(e.candidate)sendVoiceSignal(id,{kind:"candidate",candidate:e.candidate});};
-    pc.ontrack=e=>{
-      let audio=audioEls.get(id);
-      if(!audio){audio=document.createElement("audio");audio.autoplay=true;audio.playsInline=true;audio.style.display="none";$("chatPanel").appendChild(audio);audioEls.set(id,audio);}
-      audio.srcObject=e.streams[0];audio.muted=false;audio.volume=1;audio.play().catch(()=>{$("voiceNote").textContent="اتصال برقرار شده اما پخش صدا مسدود است؛ روی صفحه کلیک کنید و صدای مرورگر را بررسی کنید.";});
-    };
-    pc.onconnectionstatechange=()=>{
-      if(pc.connectionState==="connected"){
-        $("voiceNote").textContent="🎙 اتصال صوتی برقرار است.";
-      }else if(pc.connectionState==="connecting"){
-        $("voiceNote").textContent="در حال برقراری تماس صوتی...";
-      }else if(["failed","closed"].includes(pc.connectionState)){
-        closePeer(id);
-        if(voiceEnabled)$("voiceNote").textContent="ارتباط صوتی با یکی از بازیکنان قطع شد؛ وویس را یک‌بار خاموش و روشن کنید.";
-      }
-    };
-    if(offerer){const offer=await pc.createOffer();await pc.setLocalDescription(offer);await sendVoiceSignal(id,{kind:"offer",sdp:pc.localDescription});}
-    return pc;
+    if(peerSetupPromises.has(id))return peerSetupPromises.get(id);
+    const setup=(async()=>{
+      const iceServers=await getVoiceIceServers();
+      const pc=new RTCPeerConnection({iceServers,iceCandidatePoolSize:4});
+      peers.set(id,pc);
+      if(localStream)localStream.getTracks().forEach(track=>pc.addTrack(track,localStream));
+      pc.onicecandidate=e=>{if(e.candidate)sendVoiceSignal(id,{kind:"candidate",candidate:e.candidate});};
+      pc.ontrack=e=>{
+        let audio=audioEls.get(id);
+        if(!audio){audio=document.createElement("audio");audio.autoplay=true;audio.playsInline=true;audio.style.display="none";$("chatPanel").appendChild(audio);audioEls.set(id,audio);}
+        if(e.streams?.[0])audio.srcObject=e.streams[0];
+        audio.muted=false;audio.volume=1;
+        audio.play().catch(()=>{$("voiceNote").textContent="برای شنیدن صدای بازیکن، یک‌بار روی صفحه لمس یا کلیک کنید."});
+      };
+      pc.onconnectionstatechange=()=>{
+        if(pc.connectionState==="connected"){
+          $("voiceNote").textContent="🎙 اتصال صوتی برقرار است.";
+        }else if(pc.connectionState==="connecting"){
+          $("voiceNote").textContent="در حال برقراری تماس صوتی...";
+        }else if(["failed","closed"].includes(pc.connectionState)){
+          closePeer(id);
+          if(voiceEnabled)$("voiceNote").textContent="ارتباط صوتی با یکی از بازیکنان قطع شد؛ وویس را یک‌بار خاموش و روشن کنید.";
+        }
+      };
+      if(offerer){const offer=await pc.createOffer();await pc.setLocalDescription(offer);await sendVoiceSignal(id,{kind:"offer",sdp:pc.localDescription});}
+      return pc;
+    })();
+    peerSetupPromises.set(id,setup);
+    try{return await setup;}finally{if(peerSetupPromises.get(id)===setup)peerSetupPromises.delete(id);}
   }
   async function handleVoiceSignal(payload){
     const me=window.current21GameUser?.id;if(!payload||payload.to!==me||payload.from===me)return;
