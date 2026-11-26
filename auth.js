@@ -9,11 +9,13 @@
   async function refreshProfile(){if(window.current21GameUser)await loadProfile({id:window.current21GameUser.id,email:window.current21GameUser.email});}
   window.refresh21GameProfile=refreshProfile;
   async function submitAuth(e){e.preventDefault();if(!client)return status("تنظیم Supabase کامل نیست؛ فایل SUPABASE_SETUP.md را دنبال کنید.",true);const email=$("authEmail").value.trim(),password=$("authPassword").value;$("authSubmit").disabled=true;status(isSignup?"در حال ساخت حساب...":"در حال ورود...");try{if(isSignup){const username=$("authUsername").value.trim().toLowerCase();if(!/^[a-z0-9_]{3,24}$/.test(username))throw Error("نام کاربری باید ۳ تا ۲۴ حرف انگلیسی، عدد یا زیرخط باشد.");const r=await client.auth.signUp({email,password,options:{data:{username,display_name:username}}});if(r.error)throw r.error;if(!r.data.session){status("حساب ساخته شد. ایمیل تأیید را بررسی کنید؛ سپس وارد شوید.");return;}await loadProfile(r.data.user);}else{const r=await client.auth.signInWithPassword({email,password});if(r.error)throw r.error;await loadProfile(r.data.user);}}catch(err){status(err.message||"عملیات انجام نشد.",true);}finally{$("authSubmit").disabled=false;}}
-  function requestForm(type){
+  async function requestForm(type){
     if(!window.current21GameUser){alert("ابتدا وارد حساب شوید.");return;}
     const isWithdrawal=type==="withdrawal";
     const title=isWithdrawal?"درخواست برداشت ژتون":"درخواست شارژ ژتون";
-    const body=
+    const noticesResult=await client.from("admin_announcements").select("message,created_at").order("created_at",{ascending:false}).limit(5);
+    const noticesHtml=(noticesResult.data||[]).map(n=>'<article class="user-announcement"><strong>📢 اطلاعیه مدیر</strong><p>'+esc(n.message)+'</p></article>').join("");
+    const body=noticesHtml+
       '<p>'+title+'</p>'+
       '<p>موجودی فعلی: <strong>'+Number(profile?.demo_chips||0).toLocaleString("fa-IR")+' ریال · ژتون</strong></p>'+
       '<label>مقدار ژتون</label>'+
@@ -186,7 +188,7 @@
       try{await pc.addIceCandidate(candidate);}catch(e){console.warn("ICE candidate:",e);}
     }
   }
-  let stakes=[20000,30000,40000,50000,50000,60000,70000,80000,90000,100000];
+  let stakes=[200000,300000,400000,500000,500000,600000,700000,800000,900000,1000000];
   let tableStatuses=Array(10).fill("waiting"),tableCapacities=Array(10).fill(6);
   function cash(n){return Number(n||0).toLocaleString("fa-IR")+" ریال";}
   function escapeHtml(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");}
