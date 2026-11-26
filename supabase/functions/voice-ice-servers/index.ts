@@ -140,4 +140,4 @@ export async function handleRequest(request: Request, deps: Dependencies = {}): 
   }
 }
 
-if (import.meta.main) Deno.serve(handleRequest);
+if (import.meta.main) Deno.serve((request) => handleRequest(request));
