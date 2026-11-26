@@ -23,7 +23,8 @@ function isSpecialWin(hand) {
   return false;
 }
 
-let tables = [20000, 30000, 40000, 50000, 50000, 60000, 70000, 80000, 90000, 100000];
+let tables = [200000, 300000, 400000, 500000, 500000, 600000, 700000, 800000, 900000, 1000000];
+let tableStatuses = Array(tables.length).fill("waiting");
 let tableOccupancy = Array(tables.length).fill(0);
 let wallet = 0, currentTable = null, bank = 0, banker = 0, bankRound = 1, players = [], deck = [], activePlayer = 1, tableCapacity = 6;
 let bankerHand = [], playerHand = [], playerDone = false, bankerTurn = false, askechi = true, dealTimer = null, battleSettled = false, bankerDrewThisHand = false;
@@ -37,7 +38,7 @@ let bankRoundNeedsEnd = false;
 const names = ["بازیکن ۱", "بازیکن ۲", "بازیکن ۳", "بازیکن ۴", "بازیکن ۵", "بازیکن ۶"];
 const $ = id => document.getElementById(id);
 const money = n => Number(n || 0).toLocaleString("fa-IR");
-window.update21GameTables = function(rows) { tables = rows.slice().sort((a,b)=>a.id-b.id).map(t=>Number(t.stake)); renderTables(); };
+window.update21GameTables = function(rows) { tables=Array(10).fill(0);tableStatuses=Array(10).fill("maintenance");rows.forEach(t=>{const i=Number(t.id)-1;if(i>=0&&i<10){tables[i]=Number(t.stake);tableStatuses[i]=t.status;}});renderTables(); };
 
 // ===== Sound: lightweight Web Audio effects shared by solo and online play =====
 let gameAudioContext = null;
@@ -128,8 +129,8 @@ function renderTables() {
     const ok = wallet >= base * 4;
     return `<article class="table-card">
       <h3>میز ${i + 1}</h3>
-      <div class="amount">${money(base)} ژتون آزمایشی</div>
-      <div class="meta">حداقل موجودی: ${money(base * 4)} ژتون آزمایشی<br>ظرفیت: ۲ تا ۶ نفر<br><strong class="online-count" id="onlineCount${i}">آنلاین: ${Number(tableOccupancy[i]||0).toLocaleString("fa-IR")} نفر</strong></div>
+      <div class="amount">${money(base)} ژتون</div>
+      <div class="meta">حداقل موجودی: ${money(base * 4)} ژتون<br>ظرفیت: ۲ تا ۶ نفر<br><strong class="online-count" id="onlineCount${i}">آنلاین: ${Number(tableOccupancy[i]||0).toLocaleString("fa-IR")} نفر</strong></div>
       <button class="join" ${ok ? "" : "disabled"} onclick="joinTable(${i})">${ok ? "ورود به میز" : "موجودی کافی نیست"}</button>
     </article>`;
   }).join("");
@@ -150,12 +151,12 @@ function joinTable(i) {
   roundEnded = false;
   bank = tables[i] * 3;
   bankRound = 1;
-  players = names.slice(0, tableCapacity).map(name => ({ name, hand: [], done: false, balance: 1000000 }));
+  players = names.slice(0, tableCapacity).map(name => ({ name, hand: [], done: false, balance: 10000000 }));
   banker = null;
   activePlayer = 0;
   shuffle();
   $("modalTitle").textContent = `میز ${i + 1}`;
-  $("tableInfo").textContent = `مبلغ پایه: ${money(tables[i])} تومان | بانک اولیه: ${money(bank)} تومان`;
+  $("tableInfo").textContent = `مبلغ پایه: ${money(tables[i])} ریال | بانک اولیه: ${money(bank)} ریال`;
   $("modal").classList.remove("hidden");
   startAskechi();
 }
@@ -206,7 +207,7 @@ function dealAskechi(index) {
         activePlayer = (banker + 1) % players.length;
         $("standBtn").style.display = "block";
         $("nextRoundBtn").style.display = "none";
-        $("tableInfo").textContent = `مبلغ پایه: ${money(tables[currentTable])} تومان | بانکدار: ${players[banker].name} | دور بانکداری: ۱ از ۳`;
+        $("tableInfo").textContent = `مبلغ پایه: ${money(tables[currentTable])} ریال | بانکدار: ${players[banker].name} | دور بانکداری: ۱ از ۳`;
         startBankingRound(true);
       }, 900);
       return;
@@ -298,7 +299,7 @@ function render() {
               ? (bankerTurn ? hiddenCards(playerHand.length) : cardsText(playerHand))
               : hiddenCards(p.hand.length)
       }</div>
-      <div class="seat-balance">موجودی: ${money(p.balance)} تومان</div>
+      <div class="seat-balance">موجودی: ${money(p.balance)} ریال</div>
     </div>`).join("");
 
   $("handInfo").innerHTML = battleSettled
@@ -439,10 +440,10 @@ function finishBattle(reason = "normal") {
     }
     bank -= base;
     players[activePlayer].balance += base * 2;
-    battleMessage = `${players[activePlayer].name} برنده شد • ${money(base)} تومان از بانک گرفت`;
+    battleMessage = `${players[activePlayer].name} برنده شد • ${money(base)} ریال از بانک گرفت`;
   } else {
     bank += base;
-    battleMessage = `بانکدار برنده شد • ${money(base)} تومان به بانک اضافه شد`;
+    battleMessage = `بانکدار برنده شد • ${money(base)} ریال به بانک اضافه شد`;
   }
 
   players[activePlayer].hand = [...playerHand];
@@ -526,7 +527,7 @@ function endBankRound() {
   bank = base * 3;
   roundEnded = false;
   pendingBankerFunding = false;
-  $("tableInfo").textContent = `مبلغ پایه: ${money(base)} تومان | بانکدار جدید: ${players[banker].name} | دور بانکداری: ۱ از ۳`;
+  $("tableInfo").textContent = `مبلغ پایه: ${money(base)} ریال | بانکدار جدید: ${players[banker].name} | دور بانکداری: ۱ از ۳`;
   startBankingRound(true);
 }
 
@@ -535,8 +536,8 @@ function showBankerFundingError() {
   const missing = Math.max(0, base * 3 - players[banker].balance);
   accountModal("موجودی بانکدار کافی نیست", `
     <p>نوبت بانکداری به <strong>${players[banker].name}</strong> رسیده، اما موجودی او برای شروع بانکداری کافی نیست.</p>
-    <p>موجودی لازم: <strong>${money(base * 3)} تومان</strong></p>
-    <p>کسری موجودی: <strong>${money(missing)} تومان</strong></p>
+    <p>موجودی لازم: <strong>${money(base * 3)} ریال</strong></p>
+    <p>کسری موجودی: <strong>${money(missing)} ریال</strong></p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
       <button onclick="leaveTableDueToFunds()">ترک میز</button>
       <button onclick="openBankerTopUp()">افزایش موجودی</button>
@@ -576,7 +577,7 @@ function retryBankerFunding() {
   bankRound = 1;
   pendingBankerFunding = false;
   roundEnded = false;
-  $("tableInfo").textContent = `مبلغ پایه: ${money(base)} تومان | بانکدار جدید: ${players[banker].name} | دور بانکداری: ۱ از ۳`;
+  $("tableInfo").textContent = `مبلغ پایه: ${money(base)} ریال | بانکدار جدید: ${players[banker].name} | دور بانکداری: ۱ از ۳`;
   startBankingRound(true);
 }
 
@@ -586,7 +587,7 @@ function newBankRound() {
   battleMessage = "";
   $("nextRoundBtn").style.display = "none";
   bankRound++;
-  $("tableInfo").textContent = `مبلغ پایه: ${money(tables[currentTable])} تومان | بانکدار: ${players[banker].name} | دور بانکداری: ${bankRound} از ۳`;
+  $("tableInfo").textContent = `مبلغ پایه: ${money(tables[currentTable])} ریال | بانکدار: ${players[banker].name} | دور بانکداری: ${bankRound} از ۳`;
   startBankingRound();
 }
 
@@ -612,7 +613,7 @@ function closeAccount() {
 
 function showBalance() {
   accountModal("موجودی و شارژ حساب", `
-    <p>موجودی فعلی: <strong>${money(wallet)} تومان</strong></p>
+    <p>موجودی فعلی: <strong>${money(wallet)} ریال</strong></p>
     <div class="recharge-options" style="display:flex;gap:10px;margin-top:16px">
       <button onclick="showCardTransfer()">💳 کارت به کارت</button>
       <button onclick="showVoucher()">🎟 ووچر</button>
@@ -631,7 +632,7 @@ function submitCardTransfer() {
   const n = Number($("transferAmount").value);
   const ref = $("transferRef").value.trim();
   if (!Number.isFinite(n) || n <= 0 || !ref) return;
-  accountModal("کارت به کارت", `<p>درخواست شارژ به مبلغ <strong>${money(n)} تومان</strong> با شماره پیگیری <strong>${escapeHTML(ref)}</strong> ثبت شد.</p>`);
+  accountModal("کارت به کارت", `<p>درخواست شارژ به مبلغ <strong>${money(n)} ریال</strong> با شماره پیگیری <strong>${escapeHTML(ref)}</strong> ثبت شد.</p>`);
 }
 
 function showVoucher() {
@@ -649,7 +650,7 @@ function submitVoucher() {
 
 function showWithdraw() {
   accountModal("درخواست برداشت", `
-    <p>موجودی قابل برداشت: <strong>${money(wallet)} تومان</strong></p>
+    <p>موجودی قابل برداشت: <strong>${money(wallet)} ریال</strong></p>
     <input id="withdrawAmount" type="number" min="0" placeholder="مبلغ برداشت" style="width:100%;padding:10px;margin:8px 0;border-radius:8px;border:0;background:#1c283c;color:#fff">
     <button onclick="requestWithdraw()">ثبت درخواست</button>`);
 }
@@ -660,8 +661,8 @@ function requestWithdraw() {
   wallet -= n;
   renderTables();
   accountModal("درخواست برداشت", `
-    <p>درخواست برداشت <strong>${money(n)} تومان</strong> ثبت شد.</p>
-    <p>موجودی فعلی: <strong>${money(wallet)} تومان</strong></p>`);
+    <p>درخواست برداشت <strong>${money(n)} ریال</strong> ثبت شد.</p>
+    <p>موجودی فعلی: <strong>${money(wallet)} ریال</strong></p>`);
 }
 
 // ===== Events =====
