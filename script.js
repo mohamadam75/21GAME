@@ -132,7 +132,7 @@ function renderTables() {
       <h3>میز ${i + 1}</h3>
       <div class="amount">${money(base)} ریال · ژتون</div>
       <div class="meta">حداقل موجودی: ${money(base * 4)} ریال<br>ظرفیت: ۲ تا ۶ نفر<br><strong class="online-count" id="onlineCount${i}">آنلاین: ${Number(tableOccupancy[i]||0).toLocaleString("fa-IR")} نفر</strong></div>
-      <button class="join" ${ok ? "" : "disabled"} onclick="joinTable(${i})">${ok ? "ورود به میز" : "موجودی کافی نیست"}</button>
+      <div class="table-actions"><button class="join" ${ok ? "" : "disabled"} onclick="joinTable(${i})">${ok ? "ورود به میز" : "موجودی کافی نیست"}</button><button class="watch" onclick="watchTable(${i})">تماشا</button></div>
     </article>`;
   }).join("");
   $("wallet").textContent = money(wallet);
