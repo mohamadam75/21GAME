@@ -497,3 +497,7 @@ button{
 @media(prefers-reduced-motion:reduce){
   .playing-card.deal-in,.chip-token.chip-arrive{animation:none}
 }
+
+.poker-table::before,.poker-table::after{z-index:0}
+.table-inner{z-index:1}
+.bank-center{position:relative;z-index:2}
