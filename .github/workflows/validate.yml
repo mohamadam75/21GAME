@@ -1,0 +1,34 @@
+name: Validate 21Game
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check browser JavaScript syntax
+        run: |
+          node --check auth.js
+          node --check script.js
+          node --check supabase-config.js
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Check Supabase Edge Function
+        run: deno check supabase/functions/voice-ice-servers/index.ts
+      - name: Verify voice release wiring
+        run: |
+          grep -q 'config:{private:true' auth.js
+          grep -q 'functions.invoke("voice-ice-servers")' auth.js
+          grep -q '21game table members receive voice broadcasts' supabase/voice_security.sql
+          grep -q '21game table members send voice broadcasts' supabase/voice_security.sql
