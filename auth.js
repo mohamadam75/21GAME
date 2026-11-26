@@ -117,7 +117,7 @@
 /* Live lobby, private hand display, shared chat and WebRTC voice. */
 (function(){
   const $=id=>document.getElementById(id);
-  let channel=null, chatChannel=null, voiceChannel=null, seatedTable=null, actionInFlight=false, autoTurnTimer=null, autoTurnTimerKey=null;
+  let channel=null, chatChannel=null, voiceChannel=null, seatedTable=null, presenceTimer=null, actionInFlight=false, autoTurnTimer=null, autoTurnTimerKey=null;
   let voiceEnabled=false, localStream=null;
   let visualTableId=null, visualRound=null, lastVisualBankAmount=null, renderSequence=0, autoTickTimer=null;
   const seenCardKeys=new Set();
@@ -230,6 +230,7 @@
   }
   async function refreshOccupancy(){
     const client=window.supabase21Game;if(!client)return;
+    if(window.current21GameUser){try{await client.rpc("game_cleanup_stale_players");}catch(e){console.warn("presence cleanup:",e);}}
     const [seatResult,tableResult]=await Promise.all([client.from("table_seats").select("table_id"),client.from("game_tables").select("id,stake,capacity,status").order("id")]);
     const data=seatResult.data,error=seatResult.error;if(error)return;
     if(tableResult.data?.length){stakes=Array(10).fill(0);tableStatuses=Array(10).fill("waiting");tableCapacities=Array(10).fill(6);tableResult.data.forEach(t=>{stakes[t.id-1]=Number(t.stake);tableStatuses[t.id-1]=t.status;tableCapacities[t.id-1]=Number(t.capacity);});window.update21GameTables?.(tableResult.data);}
@@ -445,6 +446,10 @@
   }
   async function setupTableChannels(tableId,i){
     const client=window.supabase21Game;
+    if(presenceTimer)clearInterval(presenceTimer);
+    const sendPresence=async()=>{if(seatedTable!==tableId)return;const {error}=await client.rpc("game_presence_heartbeat",{p_table_id:tableId});if(error)console.warn("presence heartbeat:",error.message);};
+    await sendPresence();
+    presenceTimer=setInterval(sendPresence,30000);
     if(channel)await client.removeChannel(channel);
     if(chatChannel)await client.removeChannel(chatChannel);
     if(voiceChannel)await client.removeChannel(voiceChannel);
@@ -478,6 +483,8 @@
     const stake=stakes[i];
     if(Number(user.demo_chips||0)<stake*4){alert("برای این میز حداقل "+cash(stake*4)+" ژتون آزمایشی لازم است. از منو درخواست شارژ ژتون بدهید.");return;}
     try{
+      const {error:cleanupError}=await client.rpc("game_cleanup_stale_players");
+      if(cleanupError)console.warn("stale-seat cleanup before join:",cleanupError.message);
       const {data:existing,error:existingErr}=await client.from("table_seats").select("table_id,seat_no").eq("user_id",user.id);
       if(existingErr)throw existingErr;
       if(existing?.length&&existing[0].table_id!==i+1){alert("شما هم‌اکنون روی میز دیگری نشسته‌اید. ابتدا آن میز را ترک کنید.");return;}
@@ -518,6 +525,7 @@
   async function leaveOnlineTable(){
     const client=window.supabase21Game,user=window.current21GameUser;if(!client||!user||!seatedTable)return;
     const tableId=seatedTable;
+    if(presenceTimer)clearInterval(presenceTimer);presenceTimer=null;
     clearPauseKickTimer();
     if(voiceEnabled)clearVoiceConnections(true);
     const {error}=await client.rpc("game_leave_table",{p_table_id:tableId});
@@ -545,7 +553,7 @@
     document.addEventListener("pointerdown",()=>{for(const audio of audioEls.values())if(audio.srcObject)audio.play().catch(()=>{});},{passive:true});
     window.addEventListener("21game:authenticated",refreshOccupancy);
     const client=window.supabase21Game;
-    if(client){refreshOccupancy();client.channel("lobby-occupancy").on("postgres_changes",{event:"*",schema:"public",table:"table_seats"},refreshOccupancy).subscribe();}
+    if(client){refreshOccupancy();setInterval(()=>{if(window.current21GameUser)refreshOccupancy();},15000);client.channel("lobby-occupancy").on("postgres_changes",{event:"*",schema:"public",table:"table_seats"},refreshOccupancy).subscribe();}
     $("closeModal").addEventListener("click",()=>{if(seatedTable)$("modal").classList.add("hidden");});
   });
 })();
