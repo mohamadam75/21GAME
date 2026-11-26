@@ -83,6 +83,8 @@
   const $=id=>document.getElementById(id);
   let channel=null, chatChannel=null, voiceChannel=null, seatedTable=null, actionInFlight=false, autoTurnTimer=null, autoTurnTimerKey=null;
   let voiceEnabled=false, localStream=null, shownAskechiRound=null, askechiVisibleUntil=0;
+  let visualTableId=null, visualRound=null, lastVisualBankAmount=null;
+  const seenCardKeys=new Set();
   let pauseKickTimer=null, pausedTableId=null;
   function clearPauseKickTimer(){if(pauseKickTimer)clearTimeout(pauseKickTimer);pauseKickTimer=null;pausedTableId=null;}
   function schedulePauseKick(tableId){
@@ -106,10 +108,21 @@
   let tableStatuses=Array(10).fill("waiting"),tableCapacities=Array(10).fill(6);
   function cash(n){return Number(n||0).toLocaleString("fa-IR");}
   function escapeHtml(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");}
-  function cardHtml(card,small=false){
+  function cardHtml(card,small=false,animate=false,index=0){
     if(!card)return "";
     const red=["♥","♦"].includes(card.suit);
-    return '<span class="playing-card '+(red?"red":"black")+(small?" mini":"")+'"><span class="rank">'+escapeHtml(card.rank)+'</span><span class="suit">'+escapeHtml(card.suit)+'</span></span>';
+    const motion=animate?' deal-in" style="--deal-delay:'+Math.min(index,5)*75+'ms':'';
+    return '<span class="playing-card '+(red?"red":"black")+(small?" mini":"")+motion+'"><span class="rank">'+escapeHtml(card.rank)+'</span><span class="suit">'+escapeHtml(card.suit)+'</span></span>';
+  }
+  function renderCardList(cards,small,userId,unwrap=false){
+    return (cards||[]).map((entry,index)=>{
+      const card=unwrap?entry?.card:entry;
+      if(!card)return "";
+      const key=[visualTableId,visualRound,userId,index,card.rank,card.suit].join(":");
+      const animate=!seenCardKeys.has(key);
+      seenCardKeys.add(key);
+      return cardHtml(card,small,animate,index);
+    }).join("");
   }
   async function refreshOccupancy(){
     const client=window.supabase21Game;if(!client)return;
@@ -154,6 +167,10 @@
     const {data:game,error:gameError}=await client.rpc("game_my_hand",{p_table_id:tableId});
     const me=window.current21GameUser?.id;
     const askechi=(!gameError&&Array.isArray(game?.askechi_cards))?game.askechi_cards:[];
+    const nextRound=game?.round_no??"idle";
+    if(visualTableId!==tableId||visualRound!==nextRound){
+      visualTableId=tableId;visualRound=nextRound;lastVisualBankAmount=null;seenCardKeys.clear();
+    }
     if(!gameError&&game?.status==="playing"&&askechi.length&&shownAskechiRound!==game.round_no){
       shownAskechiRound=game.round_no;askechiVisibleUntil=Date.now()+2400;
       setTimeout(()=>{if(seatedTable===tableId)renderLobby(tableIndex).catch(console.error);},2450);
@@ -165,19 +182,25 @@
       const isMe=p.user_id===me, isBanker=!gameError&&game?.banker_user_id===p.user_id;
       const isActive=!gameError&&game?.active_user_id===p.user_id;
       const name=escapeHtml(p.profiles?.display_name||p.profiles?.username||"بازیکن");
-      const initialCards=showAskechi?askechi.filter(x=>x.user_id===p.user_id).map(x=>cardHtml(x.card,true)).join(""):"";
-      const privateCards=isMe&&!gameError?(game?.my_hand||[]).map(x=>cardHtml(x,true)).join(""):"";
-      const revealedCards=game?.status==="settled"?(game?.revealed_hands?.[p.user_id]||[]).map(x=>cardHtml(x,true)).join(""):"";
+      const initialCards=showAskechi?renderCardList(askechi.filter(x=>x.user_id===p.user_id),true,p.user_id,true):"";
+      const privateCards=isMe&&!gameError?renderCardList(game?.my_hand||[],true,p.user_id):"";
+      const revealedCards=game?.status==="settled"?renderCardList(game?.revealed_hands?.[p.user_id]||[],true,p.user_id):"";
       const shownCards=initialCards || revealedCards || privateCards || (game?.status==="playing"&&!isMe?'<span class="card-back playing-card"></span>':"");
       return '<div class="seat s'+i+' '+(isMe?"active ":"")+(isBanker?"banker ":"")+(isActive?"turn-active":"")+'"><div class="avatar">'+(isBanker?"👑":"👤")+'</div><div class="name">'+name+'</div><div class="tag">'+(isBanker?"بانکدار":isMe?"شما":isActive?"نوبت بازی":"بازیکن")+'</div><div class="cards">'+shownCards+'</div><div class="seat-balance">موجودی: '+cash(p.profiles?.demo_chips||0)+' ژتون</div></div>';
     }).join("");
     const statusText=gameError?"خطای دریافت وضعیت بازی: "+gameError.message:(game?.message||"در انتظار شروع بازی");
     $("status").textContent=statusText;
     $("handInfo").innerHTML=gameError?"وضعیت کارت‌ها دریافت نشد.":("کارت‌های شما: "+((game?.my_hand||[]).map(x=>cardHtml(x)).join(" ")||"—")+" · امتیاز: "+(game?.my_score||0));
+    if(!gameError&&window.play21Fx&&seenCardKeys.size)window.play21Fx("card");
     $("cardChoices").innerHTML="";
     $("bankAmount").textContent=cash(game?.bank_amount??stakes[tableIndex]*3);
-    const chipCount=Math.max(0,Math.min(12,Math.round(Number(game?.bank_amount||0)/stakes[tableIndex])));
-    $("bankChips").innerHTML=chipCount?Array.from({length:chipCount},(_,i)=>'<span class="chip-token chip-'+(i%4)+'" style="--chip-index:'+i+'"></span>').join(""):'<span class="empty-bank">بانک بازی</span>';
+    const bankAmount=Number(game?.bank_amount??stakes[tableIndex]*3);
+    const bankChanged=lastVisualBankAmount===null||bankAmount!==lastVisualBankAmount;
+    const bankIncreased=lastVisualBankAmount!==null&&bankAmount>lastVisualBankAmount;
+    const chipCount=Math.max(0,Math.min(12,Math.round(bankAmount/stakes[tableIndex])));
+    $("bankChips").innerHTML=chipCount?Array.from({length:chipCount},(_,i)=>'<span class="chip-token chip-'+(i%4)+(bankChanged?' chip-arrive':'')+'" style="--chip-index:'+i+'"></span>').join(""):'<span class="empty-bank">بانک بازی</span>';
+    if(bankIncreased&&window.play21Fx)window.play21Fx("chips");
+    lastVisualBankAmount=bankAmount;
     $("tableInfo").textContent="مبلغ پایه: "+cash(stakes[tableIndex])+" ژتون آزمایشی · ظرفیت ۶ نفر · "+seats.length+" بازیکن حاضر";
     const isMyTurn=!!game&&!gameError&&game.status==="playing"&&game.active_user_id===me;
     scheduleTurnAutoAction(tableId,gameError?null:game,me,isMyTurn);
@@ -311,6 +334,7 @@
   async function sendGameAction(action){
     const client=window.supabase21Game;if(!client||!seatedTable||actionInFlight)return;
     actionInFlight=true;
+    if(window.unlock21Audio)window.unlock21Audio();
     const actionButtons=["startGameBtn","drawCardBtn","standBtn","closeBankBtn"];
     actionButtons.forEach(id=>{const el=$(id);if(el)el.disabled=true;});
     try{
