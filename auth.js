@@ -143,22 +143,19 @@
   }
   const peers=new Map(), audioEls=new Map(), pendingIceCandidates=new Map();
   let voiceChannelReady=false, cachedIceServers=null, iceServersExpiresAt=0;
-  async function getVoiceIceServers(){
-    if(cachedIceServers&&Date.now()<iceServersExpiresAt)return cachedIceServers;
-    const fallback=[{urls:"stun:stun.l.google.com:19302"}];
-    try{
-      const {data,error}=await window.supabase21Game.functions.invoke("voice-ice-servers");
-      if(error)throw error;
-      const servers=data?.iceServers;
-      if(!Array.isArray(servers)||!servers.some(x=>String(x.urls||"").includes("turn:")))throw new Error("TURN credentials are not configured");
-      cachedIceServers=servers;
-      iceServersExpiresAt=Date.now()+45*60*1000;
-      return cachedIceServers;
-    }catch(e){
-      console.warn("TURN credentials unavailable; using STUN fallback:",e);
-      $("voiceNote").textContent="سرور کمکی TURN تنظیم نشده؛ تماس ممکن است روی بعضی اینترنت‌ها وصل نشود.";
-      return fallback;
+  async function getVoiceIceServers(forceRefresh=false){
+    if(!forceRefresh&&cachedIceServers&&iceServersExpiresAt>Date.now()+60_000)return cachedIceServers;
+    const {data,error}=await window.supabase21Game.functions.invoke("voice-ice-servers",{
+      body:{room:"table-"+seatedTable,initiator_client:window.current21GameUser?.id}
+    });
+    if(error)throw new Error(error.message||"دریافت اعتبارنامه TURN انجام نشد.");
+    const servers=data?.iceServers,expiresAt=Date.parse(data?.expiresAt||"");
+    if(!Array.isArray(servers)||!servers.length||!Number.isFinite(expiresAt)||expiresAt<=Date.now()+60_000){
+      throw new Error("اعتبارنامه TURN معتبر یا به‌اندازه کافی تازه نیست.");
     }
+    cachedIceServers=servers;
+    iceServersExpiresAt=expiresAt;
+    return cachedIceServers;
   }
   async function syncVoicePeers(){
     if(!voiceEnabled||!seatedTable||!voiceChannelReady)return;
@@ -364,10 +361,28 @@
           $("voiceNote").textContent="🎙 اتصال صوتی برقرار است.";
         }else if(pc.connectionState==="connecting"){
           $("voiceNote").textContent="در حال برقراری تماس صوتی...";
-        }else if(["failed","closed"].includes(pc.connectionState)){
+        }else if(pc.connectionState==="closed"){
           closePeer(id);
-          if(voiceEnabled)$("voiceNote").textContent="ارتباط صوتی با یکی از بازیکنان قطع شد؛ وویس را یک‌بار خاموش و روشن کنید.";
+        }else if(pc.connectionState==="failed"&&voiceEnabled){
+          $("voiceNote").textContent="ارتباط صوتی قطع شد؛ در حال تلاش برای اتصال مجدد...";
         }
+      };
+      pc.oniceconnectionstatechange=async()=>{
+        if(pc.iceConnectionState!=="failed"||!voiceEnabled||!peers.has(id))return;
+        try{
+          const freshIceServers=await getVoiceIceServers(true);
+          if(!peers.has(id)||pc.signalingState==="closed")return;
+          pc.setConfiguration({...pc.getConfiguration(),iceServers:freshIceServers});
+          pc.restartIce();
+        }catch(error){console.warn("ICE restart could not refresh TURN credentials:",error);}
+      };
+      pc.onnegotiationneeded=async()=>{
+        try{
+          if(pc.signalingState!=="stable")return;
+          const offer=await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          await sendVoiceSignal(id,{kind:"offer",sdp:pc.localDescription});
+        }catch(error){console.warn("Voice renegotiation failed:",error);}
       };
       if(offerer){const offer=await pc.createOffer();await pc.setLocalDescription(offer);await sendVoiceSignal(id,{kind:"offer",sdp:pc.localDescription});}
       return pc;
@@ -383,6 +398,7 @@
         if(voiceEnabled&&me<from)await makePeer(from,true);
       }else if(payload.kind==="offer"&&voiceEnabled){
         const pc=await makePeer(from,false);
+        if(pc.signalingState!=="stable")await pc.setLocalDescription({type:"rollback"});
         await pc.setRemoteDescription(payload.sdp);
         await flushIceCandidates(from,pc);
         const answer=await pc.createAnswer();await pc.setLocalDescription(answer);
@@ -408,12 +424,14 @@
     if(!navigator.mediaDevices?.getUserMedia||!window.RTCPeerConnection){alert("مرورگر شما تماس صوتی را پشتیبانی نمی‌کند.");return;}
     if(!voiceChannelReady){alert("اتصال صوتی میز هنوز آماده نیست؛ چند لحظه صبر کنید و دوباره بزنید.");return;}
     try{
+      $("voiceNote").textContent="در حال آماده‌سازی سرور تماس...";
+      await getVoiceIceServers();
       localStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});voiceEnabled=true;
       $("voiceBtn").classList.add("active");$("voiceBtn").textContent="🎙 قطع وویس";
       $("voiceNote").textContent="میکروفون فعال شد؛ در انتظار اتصال بازیکنان دیگر...";
       await syncVoicePeers();
       if(!peers.size)$("voiceNote").textContent="میکروفون روشن است؛ منتظر فعال شدن وویس بازیکنان دیگر هستیم.";
-    }catch(e){clearVoiceConnections(false);alert("فعال‌سازی میکروفون انجام نشد: "+e.message);}
+    }catch(e){clearVoiceConnections(false);$("voiceNote").textContent="راه‌اندازی TURN ناموفق بود؛ تنظیمات سرور تماس را بررسی کنید.";alert("فعال‌سازی تماس صوتی انجام نشد: "+(e.message||e));}
   }
   async function setupTableChannels(tableId,i){
     const client=window.supabase21Game;
