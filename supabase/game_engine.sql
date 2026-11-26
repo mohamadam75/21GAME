@@ -299,7 +299,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path=public
-as $
+as $$
 declare uid uuid:=auth.uid(); h jsonb; gs jsonb; ps public.table_public_state; total integer;
 begin
   if uid is null then raise exception 'login_required'; end if;
@@ -315,7 +315,7 @@ begin
     'bank_amount',ps.bank_amount,'round_no',ps.round_no,'message',ps.public_message,'is_banker',ps.banker_user_id=uid,
     'banker_hands_played',coalesce((gs->>'banker_hands_played')::integer,0));
 end;
-$;
+$$;
 
 revoke all on function public.game_action(integer,text) from public;
 revoke all on function public.game_my_hand(integer) from public;
