@@ -1,6 +1,7 @@
 -- One-time rial conversion + administrator announcements for 21Game.
 -- Run once in Supabase SQL Editor after the existing schema and game_engine.sql.
 create table if not exists public.system_migrations (migration_key text primary key, applied_at timestamptz not null default now());
+alter table public.system_migrations enable row level security;
 do $$
 begin
   if not exists (select 1 from public.system_migrations where migration_key='2026-11-27-rial-conversion-v1') then
