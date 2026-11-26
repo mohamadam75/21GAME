@@ -1,57 +1,68 @@
-# 21Game Supabase setup
+# راه‌اندازی و انتشار بازی ۲۱
 
-## Current phase
-This adds the secure database foundation and login UI. It does not yet make the game engine server-authoritative or enable real-money payments.
+این پروژه یک بازی آنلاین چندنفره با حساب کاربری Supabase و ژتون‌های غیرنقدی است. کد بازی و مدیریت نوبت‌ها در PostgreSQL اجرا می‌شود؛ مرورگر فقط درخواست RPC می‌فرستد. این نسخه پرداخت یا شرط‌بندی با پول واقعی ندارد.
 
-## 1. Create Supabase project
-Create a project at https://supabase.com/ and open SQL Editor.
+## وضعیت اجزای پروژه
 
-## 2. Run schema
-Copy all of `supabase/schema.sql` into SQL Editor and run it.
+- ورود و ثبت‌نام ایمیلی: پیاده‌سازی شده
+- لابی ۱۰ میز و صندلی بازیکنان: پیاده‌سازی شده
+- موتور بازی سمت سرور و نگهداری دست‌های خصوصی: در `supabase/game_engine.sql`
+- پنل مدیریت میزها و ژتون‌ها: در `supabase/admin_settings.sql`
+- چت متنی: با جدول `table_chat`
+- تماس صوتی WebRTC: کد کلاینت آماده است؛ برای تماس قابل‌اعتماد باید سیاست خصوصی Realtime و TURN راه‌اندازی شود
+- پرداخت و برداشت پول واقعی: پیاده‌سازی نشده و نباید فعال یا تبلیغ شود
 
-## 3. Configure browser client
-Open `supabase-config.js` and replace:
-- `YOUR_SUPABASE_PROJECT_URL`
-- `YOUR_SUPABASE_ANON_OR_PUBLISHABLE_KEY`
+## ترتیب آماده‌سازی Supabase
 
-Use only the anon/publishable key in the browser. Never expose the service_role key.
+در Supabase Dashboard > SQL Editor:
 
-## 4. Enable email auth
-In Supabase > Authentication > Providers, enable Email. For a first test, email confirmation can be enabled or disabled in the project's auth settings.
+1. اگر دیتابیس از قبل راه‌اندازی نشده، `supabase/schema.sql` را اجرا کنید. **اگر قبلاً اجرا شده و مدیر مبلغ میزها را تغییر داده، آن را دوباره اجرا نکنید**؛ این فایل مقادیر پیش‌فرض میزها را نیز درج/به‌روزرسانی می‌کند.
+2. `supabase/game_engine.sql` را اجرا کنید.
+3. `supabase/admin_settings.sql` را اجرا کنید.
+4. برای امن‌سازی کانال صوتی، `supabase/voice_security.sql` را اجرا کنید.
 
-## 5. Configure allowed URLs
-In Supabase > Authentication > URL Configuration, add your GitHub Pages URL to Site URL / Redirect URLs, for example `https://mohamadam75.github.io/21Game/` if that is where the repository is published. Use the actual published URL for your project.
+فایل `supabase/payment_proofs.sql` برای دریافت رسید پرداخت است و برای نسخه ژتون غیرنقدی لازم نیست؛ آن را اجرا نکنید.
 
-## 6. First admin
-After registering the account that should be the site owner, run this in SQL Editor (replace the email):
-```sql
-update public.profiles p
-set role = 'admin'
-from auth.users u
-where p.id = u.id and u.email = 'YOUR_ADMIN_EMAIL';
+## تنظیم ورود
+
+در Authentication > URL Configuration:
+- Site URL و Redirect URL را روی آدرس انتشار واقعی تنظیم کنید.
+- برای GitHub Pages از `https://mohamadam75.github.io/21GAME/` استفاده کنید.
+- Email provider را فعال نگه دارید و تأیید ایمیل را مطابق سیاست انتشار تنظیم کنید.
+
+فایل `supabase-config.js` فقط URL پروژه و کلید عمومی publishable را دارد. کلید secret یا service_role را هرگز داخل مخزن یا فایل‌های مرورگر قرار ندهید.
+
+## فعال‌سازی تماس صوتی با TURN
+
+WebRTC برای عبور از NAT و شبکه‌های محدود به TURN نیاز دارد. کد تابع Supabase در `supabase/functions/voice-ice-servers/index.ts` قرار دارد و اعتبارنامه‌های موقت Twilio Network Traversal Service را به کاربر واردشده می‌دهد.
+
+1. در Twilio یک API Key بسازید و این سه مقدار را بردارید: Account SID، API Key SID و API Key Secret.
+2. Supabase CLI را نصب و وارد حساب شوید؛ سپس از ریشه مخزن اجرا کنید:
+
+```bash
+supabase login
+supabase link --project-ref wfznxmajcjpnhrxqkhgh
+supabase secrets set TWILIO_ACCOUNT_SID=AC... TWILIO_API_KEY=SK... TWILIO_API_SECRET=...
+supabase functions deploy voice-ice-servers
 ```
-Do not expose an admin-role selector in the public website.
 
-For a demo test account, you can grant non-cash test chips in SQL Editor after the account exists:
-```sql
-update public.profiles set demo_chips = 1000000 where username = 'YOUR_USERNAME';
-```
+مقادیر واقعی را در پیام، فایل یا GitHub قرار ندهید؛ فقط در محیط امن Secrets وارد کنید. تابع با JWT احراز هویت‌شده اجرا می‌شود و اعتبارنامه TURN یک‌ساعته برمی‌گرداند.
 
-## Security notes
-- Browser users cannot read `table_private_state`, write wallet ledger entries, approve requests, or modify public game state directly.
-- A trusted Supabase Edge Function must implement seating, dealing, card privacy, settlement, and admin approvals. This is required before the game is safe for multiplayer.
-- This phase only tracks demo chips and top-up requests. Do not accept real-money deposits or run wagering until legal/regulatory requirements and licensed payment arrangements are verified.
+Twilio NTS در برخی شبکه‌ها یا کشورها ممکن است قابل دسترس نباشد و طبق مستندات فعلی آن IPv6 را پشتیبانی نمی‌کند. قبل از انتشار عمومی، تماس را بین دو دستگاه و دو اپراتور متفاوت آزمایش کنید. اگر کاربران هدف به Twilio دسترسی ندارند، باید TURN دیگری روی سرور قابل دسترس برای همان کاربران راه‌اندازی شود.
 
+## آزمون انتشار
 
-## What is implemented in this first pass
-- Email/password sign-up and sign-in UI.
-- User profile loaded from Supabase.
-- Shared seat list for 10 tables using Supabase Realtime.
-- Manual requests for demo-chip top-ups and withdrawals.
-- Admin-only request review through a database function.
-- Card sound control is inside the table window; card faces are larger and higher contrast.
+- با دو حساب جداگانه از دو دستگاه وارد شوید.
+- روی یک میز مشترک بنشینید؛ چت، شروع بازی، نوبت‌ها، بانکدار و تسویه را بررسی کنید.
+- روی هر دو دستگاه وویس را فعال کنید و صدای دوطرفه را آزمایش کنید.
+- آزمایش را یک‌بار با یک شبکه موبایل و یک اینترنت ثابت انجام دهید.
+- مجوز میکروفون را رد و دوباره فعال کنید؛ ترک میز و ورود مجدد را هم امتحان کنید.
+- پنل مدیر را با حساب مدیر و حساب عادی بررسی کنید.
+- درخواست‌های ژتون را فقط به‌عنوان ژتون غیرنقدی بررسی کنید.
 
-## What is not live yet
-- The actual game engine is still local JavaScript. The new shared table is a synchronized lobby only; cards are not dealt to multiple users yet.
-- Secure server-side game actions, private per-player hands, turn locking, balance settlement from game results, voice chat, and real-money payment integration still need their own trusted Edge Functions and testing.
-- Do not treat demo chips as money or collect deposits based on this prototype.
+## محدودیت‌های باقی‌مانده پیش از انتشار نهایی
+
+- اجرای migrationها و تنظیم Secrets باید در پروژه زنده Supabase انجام و نتیجه‌اش بررسی شود؛ از این مخزن به دیتابیس زنده دسترسی مدیریتی نداریم.
+- موتور timeout فعلی با درخواست دوره‌ای بازیکن حاضر اجرا می‌شود؛ اگر همه کاربران میز قطع شوند، زمان‌بندی سمت سرور مستقلی برای پیشبرد بازی وجود ندارد.
+- آزمون خودکار مرورگر و تست همزمان چند بازیکن باید پیش از اعلام انتشار نهایی انجام شود.
+- برای هرگونه پول واقعی، پرداخت، برداشت یا شرط‌بندی، ابتدا مجوزها، قوانین حوزه فعالیت، احراز هویت/سن و ارائه‌دهنده پرداخت مجاز باید مستقل بررسی شوند. این مخزن چنین قابلیتی را فعال نمی‌کند.
