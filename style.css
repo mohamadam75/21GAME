@@ -547,3 +547,7 @@ button{
   .table-utility-bar .social-tools{flex:1 1 100%;min-width:0;gap:6px}
   .table-utility-bar .social-btn{flex:1;padding:9px 5px;font-size:12px}
 }
+
+.demo-disclaimer{
+  display:block;margin-top:8px;color:#f3c77b;font-size:12px;line-height:1.8;
+}
