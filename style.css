@@ -551,3 +551,20 @@ button{
 .demo-disclaimer{
   display:block;margin-top:8px;color:#f3c77b;font-size:12px;line-height:1.8;
 }
+
+
+/* Larger vertical admin user cards and public announcements */
+.admin-user-card{display:flex;flex-direction:column;align-items:stretch;gap:10px;padding:18px;margin:14px 0;border-radius:14px}
+.admin-user-card>strong{font-size:17px;color:#f4f7fc}
+.admin-user-card>small{font-size:13px;line-height:1.8}
+.admin-user-card label{font-size:14px;margin-top:6px}
+.admin-user-card input{width:100%;box-sizing:border-box;min-height:44px;padding:11px 13px;border-radius:9px}
+.admin-user-card button{min-height:44px;font-size:14px}
+.user-financials{display:grid;grid-template-columns:1fr;gap:8px;padding:12px;background:#0c1421;border:1px solid #30415b;border-radius:10px}
+.user-financials span{display:flex;justify-content:space-between;gap:10px;font-size:13px;line-height:1.8}
+.user-financials b{color:#d9e9fa;text-align:left}
+.user-announcement{padding:13px 15px;margin:10px 0;background:#172b43;border:1px solid #45617e;border-right:4px solid #e0b45f;border-radius:11px}
+.user-announcement p{margin:8px 0;white-space:pre-wrap;line-height:1.9}
+.user-announcement small{color:#aebed2}
+#adminAnnouncementText{width:100%;box-sizing:border-box;min-height:110px;padding:12px;border:1px solid #40516b;border-radius:10px;background:#0c1421;color:#fff;font:inherit}
+@media(min-width:700px){.admin-user-card{padding:20px}.user-financials{grid-template-columns:1fr 1fr}}
