@@ -66,14 +66,14 @@ begin
     select s.user_id into next_uid
       from public.table_seats s
       where s.table_id=p_table_id and s.user_id<>banker
-        and s.seat_no > coalesce((
+        and s.seat_no < coalesce((
           select seat_no from public.table_seats
           where table_id=p_table_id and user_id=(priv.game_state->>'current_opponent')::uuid
-        ),0)
-      order by s.seat_no limit 1;
+        ),2147483647)
+      order by s.seat_no desc limit 1;
     if next_uid is null then
       select user_id into next_uid from public.table_seats
-      where table_id=p_table_id and user_id<>banker order by seat_no limit 1;
+      where table_id=p_table_id and user_id<>banker order by seat_no desc limit 1;
     end if;
     if next_uid is null then raise exception 'need_two_players'; end if;
     v_deck:=coalesce(priv.deck,'[]'::jsonb);
@@ -176,11 +176,11 @@ begin
              from jsonb_array_elements(v_deck) with ordinality as d(value,ord));
     select array_agg(user_id order by seat_no) into seat_ids from public.table_seats where table_id=p_table_id;
     select user_id into next_uid from public.table_seats
-      where table_id=p_table_id and seat_no >
+      where table_id=p_table_id and seat_no <
         (select seat_no from public.table_seats where table_id=p_table_id and user_id=banker)
-      order by seat_no limit 1;
+      order by seat_no desc limit 1;
     if next_uid is null then
-      select user_id into next_uid from public.table_seats where table_id=p_table_id order by seat_no limit 1;
+      select user_id into next_uid from public.table_seats where table_id=p_table_id order by seat_no desc limit 1;
     end if;
     if next_uid=banker then
       select user_id into next_uid from public.table_seats where table_id=p_table_id and user_id<>banker order by seat_no limit 1;
@@ -212,11 +212,18 @@ begin
     gs:=coalesce(priv.game_state,'{}'::jsonb);
     select coalesce(jsonb_agg(p.value),'[]'::jsonb) into v_deck from jsonb_array_elements(coalesce(gs->'paused_users','[]'::jsonb)) as p(value) where p.value#>>'{}'<>uid::text;
     gs:=jsonb_set(gs,'{paused_users}',coalesce(v_deck,'[]'::jsonb),true);
+    if coalesce(gs->>'paused_active_user','')=uid::text and ps.status='playing' and ps.active_user_id is null then
+      update public.table_public_state set active_user_id=uid,public_message='بازیکن برگشت؛ نوبت او ادامه دارد',updated_at=now() where table_id=p_table_id;
+      gs:=gs-'paused_active_user';
+    end if;
     update public.table_private_state set game_state=gs,updated_at=now() where table_id=p_table_id;
   else
     if ps.status<>'playing' then raise exception 'game_not_running'; end if;
     if ps.active_user_id<>uid then raise exception 'not_your_turn'; end if;
     v_deck:=priv.deck; v_hands:=priv.hands; gs:=priv.game_state;
+    if coalesce(gs->>'auto_advance_in_progress','false')<>'true' then
+      gs:=jsonb_set(gs,'{auto_hands}',coalesce(gs->'auto_hands','{}'::jsonb)-uid::text,true);
+    end if;
     banker:=ps.banker_user_id;
     if p_action='draw' then
       if jsonb_array_length(v_deck)=0 then raise exception 'deck_empty'; end if;
@@ -300,7 +307,7 @@ language plpgsql
 security definer
 set search_path=public
 as $$
-declare uid uuid:=auth.uid(); h jsonb; gs jsonb; ps public.table_public_state; total integer;
+declare uid uuid:=auth.uid(); h jsonb; gs jsonb; ps public.table_public_state; total integer; opponent uuid; visible_hands jsonb:='{}'::jsonb;
 begin
   if uid is null then raise exception 'login_required'; end if;
   if not exists(select 1 from public.table_seats where table_id=p_table_id and user_id=uid) then raise exception 'not_seated_at_table'; end if;
@@ -308,8 +315,17 @@ begin
   select hands,game_state into h,gs from public.table_private_state where table_id=p_table_id;
   h:=coalesce(h->uid::text,'[]'::jsonb);
   select coalesce(sum((x->>'value')::integer),0) into total from jsonb_array_elements(h) x;
+  opponent:=nullif(gs->>'current_opponent','')::uuid;
+  if ps.status='settled' and opponent is not null and (uid=ps.banker_user_id or uid=opponent) then
+    select jsonb_build_object(
+      ps.banker_user_id::text,coalesce(hands->ps.banker_user_id::text,'[]'::jsonb),
+      opponent::text,coalesce(hands->opponent::text,'[]'::jsonb)
+    ) into visible_hands from public.table_private_state where table_id=p_table_id;
+  end if;
   return jsonb_build_object('my_hand',h,'my_score',coalesce(total,0),
-    'revealed_hands',case when ps.status='settled' then coalesce((select jsonb_object_agg(k,v) from jsonb_each(coalesce((select hands from public.table_private_state where table_id=p_table_id),'{}'::jsonb)) as e(k,v)),'{}'::jsonb) else '{}'::jsonb end,
+    'askechi_cards',case when jsonb_typeof(gs->'askechi_cards')='array' then gs->'askechi_cards' else '[]'::jsonb end,
+    'paused_users',coalesce(gs->'paused_users','[]'::jsonb),
+    'revealed_hands',visible_hands,
     'phase',coalesce(gs->>'phase','waiting'),
     'status',coalesce(ps.status,'waiting'),'banker_user_id',ps.banker_user_id,'active_user_id',ps.active_user_id,
     'bank_amount',ps.bank_amount,'round_no',ps.round_no,'message',ps.public_message,'is_banker',ps.banker_user_id=uid,
@@ -428,6 +444,8 @@ declare
   active_hand jsonb;
   active_score integer;
   action_name text;
+  auto_hands jsonb;
+  auto_count integer;
   old_claim text;
   result_data jsonb;
 begin
@@ -445,6 +463,21 @@ begin
     return jsonb_build_object('advanced',false,'waiting',true);
   end if;
   select * into priv from public.table_private_state where table_id=p_table_id for update;
+  auto_hands:=coalesce(priv.game_state->'auto_hands','{}'::jsonb);
+  auto_count:=coalesce((auto_hands->>ps.active_user_id::text)::integer,0);
+  if ps.active_user_id<>ps.banker_user_id and auto_count>=2 then
+    update public.table_private_state
+      set game_state=jsonb_set(
+        jsonb_set(coalesce(game_state,'{}'::jsonb),'{paused_users}',
+          coalesce(game_state->'paused_users','[]'::jsonb)||jsonb_build_array(ps.active_user_id),true),
+        '{paused_active_user}',to_jsonb(ps.active_user_id::text),true),
+        updated_at=now()
+      where table_id=p_table_id;
+    update public.table_public_state set active_user_id=null,
+      public_message='بازیکن پس از دو دست خودکار موقتاً آفلاین شد؛ با بازگشت او بازی ادامه می‌یابد',
+      updated_at=now() where table_id=p_table_id;
+    return jsonb_build_object('advanced',false,'paused',true);
+  end if;
   active_hand:=coalesce(priv.hands->ps.active_user_id::text,'[]'::jsonb);
   select coalesce(sum((x->>'value')::integer),0) into active_score from jsonb_array_elements(active_hand) x;
   if ps.active_user_id=ps.banker_user_id then
@@ -453,9 +486,27 @@ begin
     action_name:=case when active_score<17 and jsonb_array_length(active_hand)<5 then 'draw' else 'stand' end;
   end if;
   old_claim:=current_setting('request.jwt.claim.sub',true);
+  update public.table_private_state
+    set game_state=jsonb_set(coalesce(game_state,'{}'::jsonb),'{auto_advance_in_progress}','true'::jsonb,true),
+        updated_at=now()
+    where table_id=p_table_id;
   perform set_config('request.jwt.claim.sub',ps.active_user_id::text,true);
   result_data:=public.game_action(p_table_id,action_name);
   perform set_config('request.jwt.claim.sub',coalesce(old_claim,''),true);
+  if ps.active_user_id<>ps.banker_user_id and action_name='stand' then
+    select * into priv from public.table_private_state where table_id=p_table_id for update;
+    auto_hands:=coalesce(priv.game_state->'auto_hands','{}'::jsonb);
+    auto_count:=coalesce((auto_hands->>ps.active_user_id::text)::integer,0)+1;
+    auto_hands:=jsonb_set(auto_hands,array[ps.active_user_id::text],to_jsonb(auto_count),true);
+    update public.table_private_state
+      set game_state=(game_state-'auto_advance_in_progress')||jsonb_build_object('auto_hands',auto_hands),
+          updated_at=now()
+      where table_id=p_table_id;
+  else
+    update public.table_private_state
+      set game_state=game_state-'auto_advance_in_progress',updated_at=now()
+      where table_id=p_table_id;
+  end if;
   return jsonb_build_object('advanced',true,'action',action_name,'result',result_data);
 exception when others then
   perform set_config('request.jwt.claim.sub',coalesce(old_claim,''),true);
