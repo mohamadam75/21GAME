@@ -1,4 +1,4 @@
--- 21Game Supabase foundation
+-- 21Game Supabase foundation. All chip and stake amounts are stored in IRR (rial).
 -- Run in Supabase SQL Editor. Real-money payments are intentionally not enabled here.
 
 create extension if not exists pgcrypto;
@@ -21,8 +21,8 @@ create table if not exists public.game_tables (
 );
 
 insert into public.game_tables(id,stake,capacity) values
- (1,20000,6),(2,30000,6),(3,40000,6),(4,50000,6),(5,50000,6),
- (6,60000,6),(7,70000,6),(8,80000,6),(9,90000,6),(10,100000,6)
+ (1,200000,6),(2,300000,6),(3,400000,6),(4,500000,6),(5,500000,6),
+ (6,600000,6),(7,700000,6),(8,800000,6),(9,900000,6),(10,1000000,6)
 on conflict (id) do update set stake=excluded.stake, capacity=excluded.capacity;
 
 create table if not exists public.table_seats (
